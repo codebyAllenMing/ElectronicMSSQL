@@ -277,6 +277,96 @@ export function registerSchemaHandlers(): void {
     }
   })
 
+  ipcMain.handle('db:generateInserts', async (_, database: string, tables: { tableSchema: string; tableName: string; rows: Record<string, unknown>[] }[]) => {
+    if (tables.length === 0) return ''
+
+    // ── Build FK dependency graph (only between selected tables) ────
+    const pool = await getPool(database)
+    const tableSet = new Set(tables.map((t) => `${t.tableSchema}.${t.tableName}`))
+    const deps = new Map<string, Set<string>>()
+
+    for (const { tableSchema, tableName } of tables) {
+      const key = `${tableSchema}.${tableName}`
+      deps.set(key, new Set())
+
+      const fkResult = await pool
+        .request()
+        .input('tableName', sql.NVarChar, tableName)
+        .input('tableSchema', sql.NVarChar, tableSchema)
+        .query(`
+          SELECT DISTINCT rku.TABLE_SCHEMA AS REFERENCED_SCHEMA, rku.TABLE_NAME AS REFERENCED_TABLE
+          FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+          JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+            ON rc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+          JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE rku
+            ON rc.UNIQUE_CONSTRAINT_NAME = rku.CONSTRAINT_NAME
+          WHERE ku.TABLE_NAME = @tableName AND ku.TABLE_SCHEMA = @tableSchema
+        `)
+
+      for (const row of fkResult.recordset) {
+        const refKey = `${row.REFERENCED_SCHEMA}.${row.REFERENCED_TABLE}`
+        if (tableSet.has(refKey)) deps.get(key)!.add(refKey)
+      }
+    }
+
+    await pool.close()
+
+    // ── Topological sort (Kahn's algorithm) ─────────────────────────
+    const inDegree = new Map<string, number>()
+    const adjacency = new Map<string, string[]>()
+
+    for (const [key, depSet] of deps) {
+      inDegree.set(key, depSet.size)
+      for (const dep of depSet) {
+        if (!adjacency.has(dep)) adjacency.set(dep, [])
+        adjacency.get(dep)!.push(key)
+      }
+    }
+
+    const queue = [...deps.keys()].filter((k) => (inDegree.get(k) ?? 0) === 0)
+    const sorted: string[] = []
+
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      sorted.push(current)
+      for (const dependent of adjacency.get(current) ?? []) {
+        const newDegree = (inDegree.get(dependent) ?? 1) - 1
+        inDegree.set(dependent, newDegree)
+        if (newDegree === 0) queue.push(dependent)
+      }
+    }
+
+    // ── Generate INSERT statements ───────────────────────────────────
+    const tableMap = new Map(tables.map((t) => [`${t.tableSchema}.${t.tableName}`, t]))
+    const sqlParts: string[] = []
+
+    for (const key of sorted) {
+      const table = tableMap.get(key)!
+      if (table.rows.length === 0) continue
+
+      const cols = Object.keys(table.rows[0])
+      const colList = cols.map((c) => `[${c}]`).join(', ')
+
+      const valueRows = table.rows.map((row) => {
+        const vals = cols.map((col) => {
+          const val = row[col]
+          if (val === null || val === undefined) return 'NULL'
+          if (typeof val === 'boolean') return val ? '1' : '0'
+          if (typeof val === 'number') return String(val)
+          if (val instanceof Date) return `'${val.toISOString().slice(0, 23).replace('T', ' ')}'`
+          return `'${String(val).replace(/'/g, "''")}'`
+        })
+        return `  (${vals.join(', ')})`
+      })
+
+      sqlParts.push(
+        `INSERT INTO [${table.tableSchema}].[${table.tableName}] (${colList})\nVALUES\n${valueRows.join(',\n')};`
+      )
+    }
+
+    return sqlParts.join('\n\n')
+  })
+
   ipcMain.handle('db:exportDdl', async (_, ddl: string, suggestedName: string) => {
     const { canceled, filePath } = await dialog.showSaveDialog({
       title: 'Export DDL',

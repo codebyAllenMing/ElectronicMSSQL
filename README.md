@@ -2,7 +2,7 @@
 
 A personal Electron desktop app for browsing MSSQL database structure and exporting DDL.
 
-**Version:** 1.0.1
+**Version:** 1.0.2
 
 ---
 
@@ -102,6 +102,13 @@ src/
 ## Changelog
 
 <!-- New versions go below the previous one -->
+
+### 1.0.2 — 2026-03-29
+- Data tab: row checkboxes to select specific rows for export
+- Top bar: "Export Data (N rows)" button appears when any rows are selected
+- Data export generates INSERT statements with FK-aware topological sort (referenced tables inserted first)
+- Selected rows persist when switching between tables or pages
+- Switching to a different database clears all row selections
 
 ### 1.0.1 — 2026-03-29
 - Fix: DDL now includes schema prefix (`[schema].[table]`)

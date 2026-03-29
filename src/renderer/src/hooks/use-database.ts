@@ -11,6 +11,7 @@ declare global {
       getTableCount: (database: string, tableSchema: string, tableName: string) => Promise<number>
       getTableData: (database: string, tableSchema: string, tableName: string, limit: number, offset: number) => Promise<{ columns: string[]; rows: Record<string, unknown>[] }>
       generateDdl: (database: string, tables: { tableSchema: string; tableName: string }[]) => Promise<string>
+      generateInserts: (database: string, tables: { tableSchema: string; tableName: string; rows: Record<string, unknown>[] }[]) => Promise<string>
       exportDdl: (ddl: string, suggestedName: string) => Promise<{ success: boolean; filePath?: string }>
     }
   }

@@ -10,10 +10,12 @@ type Props = {
   database: string
   tableSchema: string
   tableName: string
+  selectedRows: Record<string, unknown>[]
+  onSelectionChange: (rows: Record<string, unknown>[]) => void
   onBack: () => void
 }
 
-export default function SchemaDetail({ database, tableSchema, tableName, onBack }: Props): JSX.Element {
+export default function SchemaDetail({ database, tableSchema, tableName, selectedRows, onSelectionChange, onBack }: Props): JSX.Element {
   const { columns, loading, error } = useColumns(database, tableSchema, tableName)
   const [tab, setTab] = useState<Tab>('data')
   const [ddl, setDdl] = useState<string | null>(null)
@@ -46,6 +48,9 @@ export default function SchemaDetail({ database, tableSchema, tableName, onBack 
         </button>
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">{tableName}</h2>
         <span className="text-xs text-gray-400">{database}</span>
+        {selectedRows.length > 0 && (
+          <span className="text-xs text-blue-500">{selectedRows.length} rows selected for export</span>
+        )}
         <div className="ml-auto flex gap-2">
           {tab === 'schema' && (
             <>
@@ -137,7 +142,13 @@ export default function SchemaDetail({ database, tableSchema, tableName, onBack 
         )}
 
         {tab === 'data' && (
-          <TableData database={database} tableSchema={tableSchema} tableName={tableName} />
+          <TableData
+            database={database}
+            tableSchema={tableSchema}
+            tableName={tableName}
+            selectedRows={selectedRows}
+            onSelectionChange={onSelectionChange}
+          />
         )}
       </div>
     </div>

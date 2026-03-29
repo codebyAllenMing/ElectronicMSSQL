@@ -6,9 +6,11 @@ import type { AppView } from '../../app'
 type Props = {
   view: AppView
   onViewChange: (view: AppView) => void
+  getSelectedRows: (tableSchema: string, tableName: string) => Record<string, unknown>[]
+  onSelectionChange: (database: string, tableSchema: string, tableName: string, rows: Record<string, unknown>[]) => void
 }
 
-export default function MainContent({ view, onViewChange }: Props): JSX.Element {
+export default function MainContent({ view, onViewChange, getSelectedRows, onSelectionChange }: Props): JSX.Element {
   if (view.type === 'empty') {
     return (
       <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-600">
@@ -36,6 +38,8 @@ export default function MainContent({ view, onViewChange }: Props): JSX.Element 
         database={view.database}
         tableSchema={view.tableSchema}
         tableName={view.tableName}
+        selectedRows={getSelectedRows(view.tableSchema, view.tableName)}
+        onSelectionChange={(rows) => onSelectionChange(view.database, view.tableSchema, view.tableName, rows)}
         onBack={() => onViewChange({ type: 'empty' })}
       />
     </ErrorBoundary>

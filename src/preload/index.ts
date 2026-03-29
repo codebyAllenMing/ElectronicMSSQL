@@ -12,6 +12,8 @@ contextBridge.exposeInMainWorld('api', {
     ipcRenderer.invoke('db:getTableData', database, tableSchema, tableName, limit, offset),
   generateDdl: (database: string, tables: { tableSchema: string; tableName: string }[]) =>
     ipcRenderer.invoke('db:generateDdl', database, tables),
+  generateInserts: (database: string, tables: { tableSchema: string; tableName: string; rows: Record<string, unknown>[] }[]) =>
+    ipcRenderer.invoke('db:generateInserts', database, tables),
   exportDdl: (ddl: string, suggestedName: string) =>
     ipcRenderer.invoke('db:exportDdl', ddl, suggestedName)
 })

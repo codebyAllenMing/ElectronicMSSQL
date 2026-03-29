@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 
 type Props = {
   database: string
   tableSchema: string
   tableName: string
+  selectedRows: Record<string, unknown>[]
+  onSelectionChange: (rows: Record<string, unknown>[]) => void
 }
 
 const LIMIT_OPTIONS = [100, 500, 1000] as const
@@ -11,7 +13,7 @@ type LimitOption = (typeof LIMIT_OPTIONS)[number]
 
 const DEFAULT_COL_WIDTH = 160
 
-export default function TableData({ database, tableSchema, tableName }: Props): JSX.Element {
+export default function TableData({ database, tableSchema, tableName, selectedRows, onSelectionChange }: Props): JSX.Element {
   const [limit, setLimit] = useState<LimitOption>(100)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState<number | null>(null)
@@ -30,6 +32,21 @@ export default function TableData({ database, tableSchema, tableName }: Props): 
 
   const totalPages = total !== null ? Math.max(1, Math.ceil(total / limit)) : null
   const [copied, setCopied] = useState<string | null>(null)
+
+  // ── Row selection for data export ────────────────────────────────
+  const selectedKeys = useMemo(
+    () => new Set(selectedRows.map((r) => JSON.stringify(r))),
+    [selectedRows]
+  )
+
+  const toggleRow = (row: Record<string, unknown>): void => {
+    const key = JSON.stringify(row)
+    if (selectedKeys.has(key)) {
+      onSelectionChange(selectedRows.filter((r) => JSON.stringify(r) !== key))
+    } else {
+      onSelectionChange([...selectedRows, row])
+    }
+  }
 
   const handleCellDoubleClick = (val: unknown): void => {
     if (val === null || val === undefined) return
@@ -176,6 +193,7 @@ export default function TableData({ database, tableSchema, tableName }: Props): 
           <table className="text-sm border-collapse" style={{ tableLayout: 'fixed', width: orderedCols.reduce((sum, col) => sum + (colWidths[col] ?? DEFAULT_COL_WIDTH), 0) }}>
             <thead className="sticky top-0 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 z-10">
               <tr>
+                <th className="w-8 px-2 py-2 shrink-0" style={{ width: 32 }} />
                 {orderedCols.map((col) => (
                   <th
                     key={col}
@@ -198,7 +216,15 @@ export default function TableData({ database, tableSchema, tableName }: Props): 
             </thead>
             <tbody>
               {rows.map((row, i) => (
-                <tr key={i} className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-900">
+                <tr key={i} className={`border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-900 ${selectedKeys.has(JSON.stringify(row)) ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}>
+                  <td className="px-2 py-2 w-8" style={{ width: 32 }} onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="checkbox"
+                      checked={selectedKeys.has(JSON.stringify(row))}
+                      onChange={() => toggleRow(row)}
+                      className="w-3.5 h-3.5 accent-blue-500 cursor-pointer"
+                    />
+                  </td>
                   {orderedCols.map((col) => {
                     const val = row[col]
                     return (
