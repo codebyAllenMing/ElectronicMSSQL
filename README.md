@@ -2,7 +2,7 @@
 
 A personal Electron desktop app for browsing MSSQL database structure and exporting DDL.
 
-**Version:** 1.0.3
+**Version:** 1.0.4
 
 ---
 
@@ -102,6 +102,15 @@ src/
 ## Changelog
 
 <!-- New versions go below the previous one -->
+
+### 1.0.4 — 2026-03-30
+- Connection settings UI: gear icon in sidebar bottom-left
+- Password encrypted via Electron safeStorage (macOS Keychain / Windows DPAPI)
+- Password never transmitted to renderer process
+- Password field shows blank on open; placeholder indicates if password is already set
+- Eye icon toggle to show/hide password when re-entering
+- Close window now quits the app on all platforms (including macOS)
+- Prettier applied across all source files
 
 ### 1.0.3 — 2026-03-29
 - Fix: DDL export now uses FK-aware topological sort — referenced tables are created before tables that depend on them
