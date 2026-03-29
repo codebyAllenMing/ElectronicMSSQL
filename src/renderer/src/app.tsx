@@ -1,9 +1,12 @@
 import { useState, useMemo } from 'react'
 import { useTheme } from './hooks/use-theme'
+import { LoadingContext, useLoadingReducer } from './hooks/use-loading'
 import Sidebar from './components/layout/Sidebar'
 import MainContent from './components/layout/MainContent'
 import ThemeToggle from './components/ui/ThemeToggle'
 import Button from './components/ui/Button'
+import LoadingOverlay from './components/ui/LoadingOverlay'
+import UpdateBanner from './components/ui/UpdateBanner'
 
 export type AppView =
     | { type: 'empty' }
@@ -19,6 +22,7 @@ type DataSelection = {
 
 export default function App(): JSX.Element {
     const { theme, toggleTheme } = useTheme()
+    const loadingCtx = useLoadingReducer()
     const [view, setView] = useState<AppView>({ type: 'empty' })
     const [dataSelections, setDataSelections] = useState<Map<string, DataSelection>>(new Map())
     const [exportingData, setExportingData] = useState(false)
@@ -80,34 +84,38 @@ export default function App(): JSX.Element {
     }
 
     return (
-        <div className={theme === 'dark' ? 'dark' : ''}>
-            <div className="flex h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 overflow-hidden">
-                <Sidebar onViewChange={handleViewChange} />
-                <div className="flex-1 flex flex-col overflow-hidden">
-                    <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-800">
-                        <div>
-                            {totalSelectedRows > 0 && (
-                                <Button
-                                    variant="primary"
-                                    onClick={handleExportData}
-                                    disabled={exportingData}
-                                >
-                                    {exportingData
-                                        ? 'Exporting...'
-                                        : `Export Data (${totalSelectedRows} rows)`}
-                                </Button>
-                            )}
+        <LoadingContext.Provider value={loadingCtx}>
+            <div className={theme === 'dark' ? 'dark' : ''}>
+                <div className="flex h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 overflow-hidden">
+                    <Sidebar onViewChange={handleViewChange} />
+                    <div className="relative flex-1 flex flex-col overflow-hidden">
+                        <UpdateBanner />
+                        <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-800">
+                            <div>
+                                {totalSelectedRows > 0 && (
+                                    <Button
+                                        variant="primary"
+                                        onClick={handleExportData}
+                                        disabled={exportingData}
+                                    >
+                                        {exportingData
+                                            ? 'Exporting...'
+                                            : `Export Data (${totalSelectedRows} rows)`}
+                                    </Button>
+                                )}
+                            </div>
+                            <ThemeToggle theme={theme} onToggle={toggleTheme} />
                         </div>
-                        <ThemeToggle theme={theme} onToggle={toggleTheme} />
+                        <MainContent
+                            view={view}
+                            onViewChange={handleViewChange}
+                            getSelectedRows={getSelectedRows}
+                            onSelectionChange={handleSelectionChange}
+                        />
+                        <LoadingOverlay />
                     </div>
-                    <MainContent
-                        view={view}
-                        onViewChange={handleViewChange}
-                        getSelectedRows={getSelectedRows}
-                        onSelectionChange={handleSelectionChange}
-                    />
                 </div>
             </div>
-        </div>
+        </LoadingContext.Provider>
     )
 }

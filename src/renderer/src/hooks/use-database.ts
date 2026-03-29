@@ -12,6 +12,13 @@ declare global {
                 user: string
                 passwordSet: boolean
             }>
+            testConnection: (connection: {
+                server: string
+                port: number
+                database: string
+                user: string
+                password: string
+            }) => Promise<{ success: boolean; error?: string }>
             saveConnectionSettings: (connection: {
                 server: string
                 port: number
@@ -54,6 +61,10 @@ declare global {
                 ddl: string,
                 suggestedName: string
             ) => Promise<{ success: boolean; filePath?: string }>
+            onUpdateAvailable: (cb: (version: string) => void) => void
+            onUpdateProgress: (cb: (percent: number) => void) => void
+            onUpdateDownloaded: (cb: () => void) => void
+            installUpdate: () => Promise<void>
         }
     }
 }

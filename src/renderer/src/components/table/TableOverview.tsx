@@ -1,5 +1,6 @@
 import { useState, useRef, useMemo, useEffect } from 'react'
-import { useTables } from '../../hooks/use-database'
+import { useLoading } from '../../hooks/use-loading'
+import type { TableInfo } from '../../../../types/schema'
 import Checkbox from '../ui/Checkbox'
 import Button from '../ui/Button'
 
@@ -9,7 +10,9 @@ type Props = {
 }
 
 export default function TableOverview({ database, onSelectTable }: Props): JSX.Element {
-    const { tables, loading, error } = useTables(database)
+    const { withLoading } = useLoading()
+    const [tables, setTables] = useState<TableInfo[]>([])
+    const [error, setError] = useState<string | null>(null)
     const [selected, setSelected] = useState<Set<string>>(new Set())
     const [exporting, setExporting] = useState(false)
     const [schemaFilter, setSchemaFilter] = useState<Set<string> | null>(null) // null = all
@@ -31,6 +34,20 @@ export default function TableOverview({ database, onSelectTable }: Props): JSX.E
     useEffect(() => {
         setSelected(new Set())
     }, [schemaFilter])
+
+    // Fetch tables when database changes
+    useEffect(() => {
+        setError(null)
+        setTables([])
+        withLoading(() =>
+            window.api
+                .getTables(database)
+                .then(setTables)
+                .catch((err) =>
+                    setError(err instanceof Error ? err.message : 'Failed to load tables')
+                )
+        )
+    }, [database])
 
     // Reset filter when database changes
     useEffect(() => {
@@ -107,14 +124,6 @@ export default function TableOverview({ database, onSelectTable }: Props): JSX.E
         } finally {
             setExporting(false)
         }
-    }
-
-    if (loading) {
-        return (
-            <div className="flex-1 flex items-center justify-center text-sm text-gray-400">
-                Loading tables...
-            </div>
-        )
     }
 
     if (error) {

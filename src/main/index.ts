@@ -3,8 +3,9 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerConnectionHandlers } from './ipc/connection'
 import { registerSchemaHandlers } from './ipc/schema'
+import { registerUpdaterHandlers } from './ipc/updater'
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
     const mainWindow = new BrowserWindow({
         width: 1280,
         height: 800,
@@ -32,6 +33,8 @@ function createWindow(): void {
     } else {
         mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
     }
+
+    return mainWindow
 }
 
 app.whenReady().then(() => {
@@ -44,7 +47,8 @@ app.whenReady().then(() => {
     registerConnectionHandlers()
     registerSchemaHandlers()
 
-    createWindow()
+    const mainWindow = createWindow()
+    registerUpdaterHandlers(mainWindow)
 
     app.on('activate', function () {
         if (BrowserWindow.getAllWindows().length === 0) createWindow()

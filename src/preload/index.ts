@@ -1,8 +1,15 @@
-import { contextBridge, ipcRenderer } from 'electron'
+import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 
 contextBridge.exposeInMainWorld('api', {
     getConnectionInfo: () => ipcRenderer.invoke('db:getConnectionInfo'),
     getConnectionSettings: () => ipcRenderer.invoke('db:getConnectionSettings'),
+    testConnection: (connection: {
+        server: string
+        port: number
+        database: string
+        user: string
+        password: string
+    }) => ipcRenderer.invoke('db:testConnection', connection),
     saveConnectionSettings: (connection: {
         server: string
         port: number
@@ -31,5 +38,20 @@ contextBridge.exposeInMainWorld('api', {
         tables: { tableSchema: string; tableName: string; rows: Record<string, unknown>[] }[]
     ) => ipcRenderer.invoke('db:generateInserts', database, tables),
     exportDdl: (ddl: string, suggestedName: string) =>
-        ipcRenderer.invoke('db:exportDdl', ddl, suggestedName)
+        ipcRenderer.invoke('db:exportDdl', ddl, suggestedName),
+
+    onUpdateAvailable: (cb: (version: string) => void) => {
+        ipcRenderer.on('update:available', (_: IpcRendererEvent, info: { version: string }) =>
+            cb(info.version)
+        )
+    },
+    onUpdateProgress: (cb: (percent: number) => void) => {
+        ipcRenderer.on('update:progress', (_: IpcRendererEvent, data: { percent: number }) =>
+            cb(data.percent)
+        )
+    },
+    onUpdateDownloaded: (cb: () => void) => {
+        ipcRenderer.on('update:downloaded', cb)
+    },
+    installUpdate: () => ipcRenderer.invoke('update:install')
 })

@@ -25,8 +25,10 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
     const [passwordSet, setPasswordSet] = useState(false)
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
+    const [testing, setTesting] = useState(false)
     const [error, setError] = useState<string | null>(null)
     const [success, setSuccess] = useState(false)
+    const [testResult, setTestResult] = useState<'ok' | 'fail' | null>(null)
     const [showPassword, setShowPassword] = useState(false)
     const passwordRef = useRef<HTMLInputElement>(null)
 
@@ -64,9 +66,23 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
         }
     }
 
+    const handleTest = async (): Promise<void> => {
+        setTesting(true)
+        setTestResult(null)
+        setError(null)
+        try {
+            const result = await window.api.testConnection(form)
+            setTestResult(result.success ? 'ok' : 'fail')
+            if (!result.success) setError(result.error ?? 'Connection failed')
+        } finally {
+            setTesting(false)
+        }
+    }
+
     const set = (field: keyof FormState, value: string | number): void => {
         setForm((prev) => ({ ...prev, [field]: value }))
         setError(null)
+        setTestResult(null)
     }
 
     return (
@@ -191,6 +207,22 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
                                     Password is set. Enter a new one to replace it.
                                 </p>
                             )}
+                            <div className="flex items-center gap-3 pl-24">
+                                <button
+                                    type="button"
+                                    onClick={handleTest}
+                                    disabled={testing || saving || loading}
+                                    className="text-xs px-3 py-1.5 rounded border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    {testing ? 'Testing...' : 'Test Connect'}
+                                </button>
+                                {testResult === 'ok' && (
+                                    <span className="text-xs text-green-500">Connected</span>
+                                )}
+                                {testResult === 'fail' && (
+                                    <span className="text-xs text-red-500">Failed</span>
+                                )}
+                            </div>
                         </>
                     )}
 

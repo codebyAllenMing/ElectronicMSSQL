@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { useColumns } from '../../hooks/use-database'
+import { useState, useEffect } from 'react'
+import { useLoading } from '../../hooks/use-loading'
+import type { ColumnInfo } from '../../../../types/schema'
 import DdlBlock from '../export/DdlBlock'
 import Button from '../ui/Button'
 import TableData from './TableData'
@@ -23,10 +24,25 @@ export default function SchemaDetail({
     onSelectionChange,
     onBack
 }: Props): JSX.Element {
-    const { columns, loading, error } = useColumns(database, tableSchema, tableName)
+    const { withLoading } = useLoading()
+    const [columns, setColumns] = useState<ColumnInfo[]>([])
+    const [columnsError, setColumnsError] = useState<string | null>(null)
     const [tab, setTab] = useState<Tab>('data')
     const [ddl, setDdl] = useState<string | null>(null)
     const [loadingDdl, setLoadingDdl] = useState(false)
+
+    useEffect(() => {
+        setColumnsError(null)
+        setColumns([])
+        withLoading(() =>
+            window.api
+                .getColumns(database, tableSchema, tableName)
+                .then(setColumns)
+                .catch((err) =>
+                    setColumnsError(err instanceof Error ? err.message : 'Failed to load columns')
+                )
+        )
+    }, [database, tableSchema, tableName])
 
     const handleShowDdl = async (): Promise<void> => {
         setLoadingDdl(true)
@@ -97,11 +113,10 @@ export default function SchemaDetail({
             <div className="flex-1 overflow-auto">
                 {tab === 'schema' && (
                     <>
-                        {loading && (
-                            <p className="px-4 py-4 text-sm text-gray-400">Loading columns...</p>
+                        {columnsError && (
+                            <p className="px-4 py-4 text-sm text-red-500">{columnsError}</p>
                         )}
-                        {error && <p className="px-4 py-4 text-sm text-red-500">{error}</p>}
-                        {!loading && !error && (
+                        {!columnsError && (
                             <table className="w-full text-sm">
                                 <thead className="sticky top-0 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
                                     <tr>

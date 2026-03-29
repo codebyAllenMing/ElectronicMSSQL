@@ -90,6 +90,44 @@ export function registerConnectionHandlers(): void {
     })
 
     ipcMain.handle(
+        'db:testConnection',
+        async (
+            _,
+            incoming: {
+                server: string
+                port: number
+                database: string
+                user: string
+                password: string
+            }
+        ) => {
+            const existing = loadSettings()
+            const plainPassword =
+                incoming.password.length > 0
+                    ? incoming.password
+                    : decryptPassword(existing.connection.password)
+
+            try {
+                const pool = await new sql.ConnectionPool({
+                    server: incoming.server,
+                    port: incoming.port,
+                    database: 'master',
+                    user: incoming.user,
+                    password: plainPassword,
+                    options: { encrypt: false, trustServerCertificate: true }
+                }).connect()
+                await pool.close()
+                return { success: true }
+            } catch (err) {
+                return {
+                    success: false,
+                    error: err instanceof Error ? err.message : 'Connection failed'
+                }
+            }
+        }
+    )
+
+    ipcMain.handle(
         'db:saveConnectionSettings',
         async (
             _,

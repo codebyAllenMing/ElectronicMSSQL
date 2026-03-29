@@ -13,6 +13,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
+    "electron-updater": "^6.8.3",
     "mssql": "^11.0.1"
   },
   "build": {
@@ -31,14 +32,21 @@
     },
     "win": {
       "target": "nsis"
+    },
+    "publish": {
+      "provider": "github",
+      "owner": "codebyAllenMing",
+      "repo": "ElectronicMSSQL"
     }
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["electron", "esbuild", "electron-builder"]
+    "onlyBuiltDependencies": [
+      "electron",
+      "esbuild",
+      "electron-builder"
+    ]
   },
   "devDependencies": {
-    "prettier": "^3.4.0",
-    "electron-builder": "^25.1.8",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
     "@types/mssql": "^9.1.5",
@@ -48,8 +56,10 @@
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
     "electron-vite": "^5.0.0",
     "postcss": "^8.4.49",
+    "prettier": "^3.4.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tailwindcss": "^3.4.17",

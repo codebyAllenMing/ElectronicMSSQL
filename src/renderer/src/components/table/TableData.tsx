@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
+import { useLoading } from '../../hooks/use-loading'
 
 type Props = {
     database: string
@@ -27,8 +28,8 @@ export default function TableData({
     const [colOrder, setColOrder] = useState<string[]>([])
     const [colWidths, setColWidths] = useState<Record<string, number>>({})
     const [rows, setRows] = useState<Record<string, unknown>[]>([])
-    const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const { withLoading } = useLoading()
 
     // resize state
     const resizing = useRef<{ col: string; startX: number; startWidth: number } | null>(null)
@@ -80,26 +81,27 @@ export default function TableData({
     }, [database, tableSchema, tableName])
 
     useEffect(() => {
-        setLoading(true)
         setError(null)
         const offset = (page - 1) * limit
-
-        window.api
-            .getTableData(database, tableSchema, tableName, limit, offset)
-            .then((result) => {
-                setColumns(result.columns)
-                setColOrder(result.columns)
-                setColWidths((prev) => {
-                    const next = { ...prev }
-                    for (const col of result.columns) {
-                        if (!next[col]) next[col] = DEFAULT_COL_WIDTH
-                    }
-                    return next
+        withLoading(() =>
+            window.api
+                .getTableData(database, tableSchema, tableName, limit, offset)
+                .then((result) => {
+                    setColumns(result.columns)
+                    setColOrder(result.columns)
+                    setColWidths((prev) => {
+                        const next = { ...prev }
+                        for (const col of result.columns) {
+                            if (!next[col]) next[col] = DEFAULT_COL_WIDTH
+                        }
+                        return next
+                    })
+                    setRows(result.rows)
                 })
-                setRows(result.rows)
-            })
-            .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load data'))
-            .finally(() => setLoading(false))
+                .catch((err) =>
+                    setError(err instanceof Error ? err.message : 'Failed to load data')
+                )
+        )
     }, [database, tableSchema, tableName, limit, page])
 
     // ── Column resize ────────────────────────────────────────────────
@@ -190,14 +192,14 @@ export default function TableData({
                     <div className="ml-auto flex items-center gap-1">
                         <button
                             onClick={() => setPage(1)}
-                            disabled={page === 1 || loading}
+                            disabled={page === 1}
                             className="px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:cursor-not-allowed"
                         >
                             «
                         </button>
                         <button
                             onClick={() => setPage((p) => p - 1)}
-                            disabled={page === 1 || loading}
+                            disabled={page === 1}
                             className="px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:cursor-not-allowed"
                         >
                             ‹
@@ -207,14 +209,14 @@ export default function TableData({
                         </span>
                         <button
                             onClick={() => setPage((p) => p + 1)}
-                            disabled={page === totalPages || loading}
+                            disabled={page === totalPages}
                             className="px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:cursor-not-allowed"
                         >
                             ›
                         </button>
                         <button
                             onClick={() => setPage(totalPages)}
-                            disabled={page === totalPages || loading}
+                            disabled={page === totalPages}
                             className="px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 disabled:opacity-30 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:cursor-not-allowed"
                         >
                             »
@@ -232,11 +234,6 @@ export default function TableData({
 
             {/* Table */}
             <div className="flex-1 overflow-auto relative">
-                {loading && (
-                    <div className="absolute inset-0 flex items-center justify-center bg-white/50 dark:bg-gray-950/50 text-sm text-gray-400 z-10">
-                        Loading...
-                    </div>
-                )}
                 {error && (
                     <div className="flex items-center justify-center h-32 text-sm text-red-500">
                         {error}
