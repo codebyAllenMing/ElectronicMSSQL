@@ -3,12 +3,11 @@ import { useTheme } from './hooks/use-theme'
 import Sidebar from './components/layout/Sidebar'
 import MainContent from './components/layout/MainContent'
 import ThemeToggle from './components/ui/ThemeToggle'
-import type { TableInfo } from '../../types/schema'
 
 export type AppView =
   | { type: 'empty' }
-  | { type: 'table-overview'; database: string; tables: TableInfo[] }
-  | { type: 'schema-detail'; database: string; tableName: string }
+  | { type: 'table-overview'; database: string }
+  | { type: 'schema-detail'; database: string; tableSchema: string; tableName: string }
 
 export default function App(): JSX.Element {
   const { theme, toggleTheme } = useTheme()

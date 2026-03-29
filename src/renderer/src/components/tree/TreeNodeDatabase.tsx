@@ -12,34 +12,25 @@ export default function TreeNodeDatabase({ database, onViewChange }: Props): JSX
   const [expanded, setExpanded] = useState(false)
   const { tables, loading } = useTables(expanded ? database : null)
 
-  const handleToggle = (): void => {
-    setExpanded((prev) => !prev)
-    if (!expanded) {
-      onViewChange({ type: 'empty' })
-    }
+  const handleDatabaseClick = (): void => {
+    setExpanded(true)
+    onViewChange({ type: 'table-overview', database })
   }
 
-  const handleDatabaseClick = (): void => {
-    if (!expanded) {
-      setExpanded(true)
-    }
-    if (tables.length > 0) {
-      onViewChange({ type: 'table-overview', database, tables })
-    }
+  const handleToggle = (e: React.MouseEvent): void => {
+    e.stopPropagation()
+    setExpanded((prev) => !prev)
   }
 
   return (
     <li>
       <div
-        className="flex items-center gap-1 px-2 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800 group"
+        className="flex items-center gap-1 px-2 py-1 cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"
         onClick={handleDatabaseClick}
       >
         <button
           className="w-4 h-4 flex items-center justify-center text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 shrink-0"
-          onClick={(e) => {
-            e.stopPropagation()
-            handleToggle()
-          }}
+          onClick={handleToggle}
         >
           {expanded ? '▾' : '▸'}
         </button>
@@ -59,6 +50,7 @@ export default function TreeNodeDatabase({ database, onViewChange }: Props): JSX
                 onViewChange({
                   type: 'schema-detail',
                   database,
+                  tableSchema: table.tableSchema,
                   tableName: table.tableName
                 })
               }

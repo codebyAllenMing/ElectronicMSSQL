@@ -1,5 +1,6 @@
 import TableOverview from '../table/TableOverview'
 import SchemaDetail from '../table/SchemaDetail'
+import ErrorBoundary from '../ErrorBoundary'
 import type { AppView } from '../../app'
 
 type Props = {
@@ -18,21 +19,25 @@ export default function MainContent({ view, onViewChange }: Props): JSX.Element 
 
   if (view.type === 'table-overview') {
     return (
-      <TableOverview
-        database={view.database}
-        tables={view.tables}
-        onSelectTable={(tableName) =>
-          onViewChange({ type: 'schema-detail', database: view.database, tableName })
-        }
-      />
+      <ErrorBoundary key={view.database}>
+        <TableOverview
+          database={view.database}
+          onSelectTable={(tableSchema, tableName) =>
+            onViewChange({ type: 'schema-detail', database: view.database, tableSchema, tableName })
+          }
+        />
+      </ErrorBoundary>
     )
   }
 
   return (
-    <SchemaDetail
-      database={view.database}
-      tableName={view.tableName}
-      onBack={() => onViewChange({ type: 'empty' })}
-    />
+    <ErrorBoundary key={`${view.database}.${view.tableSchema}.${view.tableName}`}>
+      <SchemaDetail
+        database={view.database}
+        tableSchema={view.tableSchema}
+        tableName={view.tableName}
+        onBack={() => onViewChange({ type: 'empty' })}
+      />
+    </ErrorBoundary>
   )
 }

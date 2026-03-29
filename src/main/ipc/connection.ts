@@ -43,7 +43,7 @@ export function registerConnectionHandlers(): void {
     const config = buildConfig(settings)
     config.database = 'master'
 
-    const pool = await sql.connect(config)
+    const pool = await new sql.ConnectionPool(config).connect()
     const result = await pool.request().query(`
       SELECT name
       FROM sys.databases

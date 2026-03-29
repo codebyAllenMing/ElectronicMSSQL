@@ -27,7 +27,7 @@ async function getPool(database: string): Promise<sql.ConnectionPool> {
   const settings = loadSettings()
   const { server, port, user, password } = settings.connection
 
-  return sql.connect({
+  const pool = new sql.ConnectionPool({
     server,
     port,
     database,
@@ -38,15 +38,17 @@ async function getPool(database: string): Promise<sql.ConnectionPool> {
       trustServerCertificate: true
     }
   })
+  return pool.connect()
 }
 
 export function registerSchemaHandlers(): void {
   ipcMain.handle('db:getTables', async (_, database: string) => {
     const pool = await getPool(database)
 
-    const result = await pool.request().input('db', sql.NVarChar, database).query(`
+    const result = await pool.request().query(`
       SELECT
         t.TABLE_NAME AS tableName,
+        t.TABLE_SCHEMA AS tableSchema,
         (
           SELECT COUNT(*)
           FROM INFORMATION_SCHEMA.COLUMNS c
@@ -59,7 +61,7 @@ export function registerSchemaHandlers(): void {
           JOIN sys.partitions p ON st.object_id = p.object_id
           WHERE st.name = t.TABLE_NAME
             AND p.index_id IN (0, 1)
-        ) AS rowCount
+        ) AS [rowCount]
       FROM INFORMATION_SCHEMA.TABLES t
       WHERE t.TABLE_TYPE = 'BASE TABLE'
       ORDER BY t.TABLE_NAME
@@ -209,6 +211,31 @@ export function registerSchemaHandlers(): void {
     await pool.close()
 
     return ddlParts.join('\n\n')
+  })
+
+  ipcMain.handle('db:getTableCount', async (_, database: string, tableSchema: string, tableName: string) => {
+    const pool = await getPool(database)
+    const result = await pool
+      .request()
+      .query(`SELECT COUNT(*) AS total FROM [${database}].[${tableSchema}].[${tableName}]`)
+    await pool.close()
+    return result.recordset[0].total as number
+  })
+
+  ipcMain.handle('db:getTableData', async (_, database: string, tableSchema: string, tableName: string, limit: number, offset: number) => {
+    const pool = await getPool(database)
+    const result = await pool
+      .request()
+      .query(`
+        SELECT * FROM [${database}].[${tableSchema}].[${tableName}]
+        ORDER BY (SELECT NULL)
+        OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
+      `)
+    await pool.close()
+    return {
+      columns: result.recordset.length > 0 ? Object.keys(result.recordset[0]) : [],
+      rows: result.recordset
+    }
   })
 
   ipcMain.handle('db:exportDdl', async (_, ddl: string, suggestedName: string) => {

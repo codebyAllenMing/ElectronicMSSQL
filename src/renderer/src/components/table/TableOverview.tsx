@@ -1,15 +1,15 @@
 import { useState } from 'react'
+import { useTables } from '../../hooks/use-database'
 import Checkbox from '../ui/Checkbox'
 import Button from '../ui/Button'
-import type { TableInfo } from '../../../../types/schema'
 
 type Props = {
   database: string
-  tables: TableInfo[]
-  onSelectTable: (tableName: string) => void
+  onSelectTable: (tableSchema: string, tableName: string) => void
 }
 
-export default function TableOverview({ database, tables, onSelectTable }: Props): JSX.Element {
+export default function TableOverview({ database, onSelectTable }: Props): JSX.Element {
+  const { tables, loading, error } = useTables(database)
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [exporting, setExporting] = useState(false)
 
@@ -31,7 +31,6 @@ export default function TableOverview({ database, tables, onSelectTable }: Props
   const handleExport = async (): Promise<void> => {
     if (selected.size === 0) return
     setExporting(true)
-
     try {
       const ddl = await window.api.generateDdl(database, Array.from(selected))
       const suggestedName = selected.size === 1
@@ -41,6 +40,20 @@ export default function TableOverview({ database, tables, onSelectTable }: Props
     } finally {
       setExporting(false)
     }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-sm text-gray-400">
+        Loading tables...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-sm text-red-500">{error}</div>
+    )
   }
 
   return (
@@ -81,12 +94,9 @@ export default function TableOverview({ database, tables, onSelectTable }: Props
               <tr
                 key={table.tableName}
                 className="border-b border-gray-100 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-900 cursor-pointer"
-                onClick={() => onSelectTable(table.tableName)}
+                onClick={() => onSelectTable(table.tableSchema, table.tableName)}
               >
-                <td
-                  className="w-10 px-4 py-2"
-                  onClick={(e) => e.stopPropagation()}
-                >
+                <td className="w-10 px-4 py-2" onClick={(e) => e.stopPropagation()}>
                   <Checkbox
                     checked={selected.has(table.tableName)}
                     onChange={(checked) => toggleOne(table.tableName, checked)}

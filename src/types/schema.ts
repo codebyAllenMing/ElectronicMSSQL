@@ -5,6 +5,7 @@ export type ConnectionInfo = {
 
 export type TableInfo = {
   tableName: string
+  tableSchema: string
   columnCount: number
   rowCount: number
 }

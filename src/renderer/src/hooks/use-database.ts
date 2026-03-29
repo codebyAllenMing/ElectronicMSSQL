@@ -8,6 +8,8 @@ declare global {
       getDatabases: () => Promise<string[]>
       getTables: (database: string) => Promise<TableInfo[]>
       getColumns: (database: string, tableName: string) => Promise<ColumnInfo[]>
+      getTableCount: (database: string, tableSchema: string, tableName: string) => Promise<number>
+      getTableData: (database: string, tableSchema: string, tableName: string, limit: number, offset: number) => Promise<{ columns: string[]; rows: Record<string, unknown>[] }>
       generateDdl: (database: string, tableNames: string[]) => Promise<string>
       exportDdl: (ddl: string, suggestedName: string) => Promise<{ success: boolean; filePath?: string }>
     }
