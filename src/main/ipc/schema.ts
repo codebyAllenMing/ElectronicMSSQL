@@ -135,9 +135,67 @@ export function registerSchemaHandlers(): void {
 
   ipcMain.handle('db:generateDdl', async (_, database: string, tables: { tableSchema: string; tableName: string }[]) => {
     const pool = await getPool(database)
-    const ddlParts: string[] = []
+
+    // ── Topological sort by FK dependency ───────────────────────────
+    const tableSet = new Set(tables.map((t) => `${t.tableSchema}.${t.tableName}`))
+    const deps = new Map<string, Set<string>>()
 
     for (const { tableSchema, tableName } of tables) {
+      const key = `${tableSchema}.${tableName}`
+      deps.set(key, new Set())
+
+      const fkDepsResult = await pool
+        .request()
+        .input('tableName', sql.NVarChar, tableName)
+        .input('tableSchema', sql.NVarChar, tableSchema)
+        .query(`
+          SELECT DISTINCT rku.TABLE_SCHEMA AS REFERENCED_SCHEMA, rku.TABLE_NAME AS REFERENCED_TABLE
+          FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+          JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+            ON rc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+          JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE rku
+            ON rc.UNIQUE_CONSTRAINT_NAME = rku.CONSTRAINT_NAME
+          WHERE ku.TABLE_NAME = @tableName AND ku.TABLE_SCHEMA = @tableSchema
+            AND rku.TABLE_NAME <> @tableName
+        `)
+
+      for (const row of fkDepsResult.recordset) {
+        const refKey = `${row.REFERENCED_SCHEMA}.${row.REFERENCED_TABLE}`
+        if (tableSet.has(refKey)) deps.get(key)!.add(refKey)
+      }
+    }
+
+    const inDegree = new Map<string, number>()
+    const adjacency = new Map<string, string[]>()
+
+    for (const [key, depSet] of deps) {
+      inDegree.set(key, depSet.size)
+      for (const dep of depSet) {
+        if (!adjacency.has(dep)) adjacency.set(dep, [])
+        adjacency.get(dep)!.push(key)
+      }
+    }
+
+    const queue = [...deps.keys()].filter((k) => (inDegree.get(k) ?? 0) === 0)
+    const sortedKeys: string[] = []
+
+    while (queue.length > 0) {
+      const current = queue.shift()!
+      sortedKeys.push(current)
+      for (const dependent of adjacency.get(current) ?? []) {
+        const newDegree = (inDegree.get(dependent) ?? 1) - 1
+        inDegree.set(dependent, newDegree)
+        if (newDegree === 0) queue.push(dependent)
+      }
+    }
+
+    const tableMap = new Map(tables.map((t) => [`${t.tableSchema}.${t.tableName}`, t]))
+    const sortedTables = sortedKeys.map((k) => tableMap.get(k)!)
+
+    // ── Generate DDL in sorted order ────────────────────────────────
+    const ddlParts: string[] = []
+
+    for (const { tableSchema, tableName } of sortedTables) {
       const colResult = await pool
         .request()
         .input('tableName', sql.NVarChar, tableName)

@@ -2,7 +2,7 @@
 
 A personal Electron desktop app for browsing MSSQL database structure and exporting DDL.
 
-**Version:** 1.0.2
+**Version:** 1.0.3
 
 ---
 
@@ -102,6 +102,9 @@ src/
 ## Changelog
 
 <!-- New versions go below the previous one -->
+
+### 1.0.3 — 2026-03-29
+- Fix: DDL export now uses FK-aware topological sort — referenced tables are created before tables that depend on them
 
 ### 1.0.2 — 2026-03-29
 - Data tab: row checkboxes to select specific rows for export
