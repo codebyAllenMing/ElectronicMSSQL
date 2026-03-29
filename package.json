@@ -1,6 +1,6 @@
 {
   "name": "electronic-mssql",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "MSSQL schema browser and DDL exporter",
   "main": "./out/main/index.js",
   "scripts": {
@@ -25,7 +25,11 @@
     },
     "files": [
       "out/**/*",
-      "!node_modules"
+      "node_modules/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/mssql/**/*",
+      "node_modules/tedious/**/*"
     ],
     "mac": {
       "target": "dmg"
