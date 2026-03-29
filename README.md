@@ -2,7 +2,7 @@
 
 A personal Electron desktop app for browsing MSSQL database structure and exporting DDL.
 
-**Version:** 1.0.0
+**Version:** 1.0.1
 
 ---
 
@@ -20,7 +20,7 @@ A personal Electron desktop app for browsing MSSQL database structure and export
 
 ### Database Browser
 - Connect to MSSQL via `appsettings.json` (SQL Login)
-- Left sidebar tree: Server → Databases → Tables (lazy-loaded)
+- Left sidebar tree: Server → Databases → Schema → Tables (lazy-loaded)
 
 ### Data Tab (default view)
 - Browse table rows with pagination (100 / 500 / 1000 rows per page)
@@ -102,6 +102,15 @@ src/
 ## Changelog
 
 <!-- New versions go below the previous one -->
+
+### 1.0.1 — 2026-03-29
+- Fix: DDL now includes schema prefix (`[schema].[table]`)
+- Fix: DDL now correctly handles `IDENTITY` columns
+- Fix: `getColumns` now filters by schema, preventing duplicate columns when same table name exists in multiple schemas
+- Fix: `getTables` row count now correctly scoped per schema
+- Fix: DDL foreign key `REFERENCES` now includes schema prefix
+- Sidebar tree now groups tables by schema: Server → Database → Schema → Tables
+- Table overview toolbar shows schema filter dropdown when multiple schemas exist
 
 ### 1.0.0 — 2026-03-29
 - Initial release
