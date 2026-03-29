@@ -7,10 +7,10 @@ declare global {
       getConnectionInfo: () => Promise<ConnectionInfo>
       getDatabases: () => Promise<string[]>
       getTables: (database: string) => Promise<TableInfo[]>
-      getColumns: (database: string, tableName: string) => Promise<ColumnInfo[]>
+      getColumns: (database: string, tableSchema: string, tableName: string) => Promise<ColumnInfo[]>
       getTableCount: (database: string, tableSchema: string, tableName: string) => Promise<number>
       getTableData: (database: string, tableSchema: string, tableName: string, limit: number, offset: number) => Promise<{ columns: string[]; rows: Record<string, unknown>[] }>
-      generateDdl: (database: string, tableNames: string[]) => Promise<string>
+      generateDdl: (database: string, tables: { tableSchema: string; tableName: string }[]) => Promise<string>
       exportDdl: (ddl: string, suggestedName: string) => Promise<{ success: boolean; filePath?: string }>
     }
   }
@@ -73,7 +73,7 @@ export function useTables(database: string | null): {
   return { tables, loading, error }
 }
 
-export function useColumns(database: string | null, tableName: string | null): {
+export function useColumns(database: string | null, tableSchema: string | null, tableName: string | null): {
   columns: ColumnInfo[]
   loading: boolean
   error: string | null
@@ -83,17 +83,17 @@ export function useColumns(database: string | null, tableName: string | null): {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!database || !tableName) return
+    if (!database || !tableSchema || !tableName) return
 
     setLoading(true)
     setError(null)
 
     window.api
-      .getColumns(database, tableName)
+      .getColumns(database, tableSchema, tableName)
       .then(setColumns)
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load columns'))
       .finally(() => setLoading(false))
-  }, [database, tableName])
+  }, [database, tableSchema, tableName])
 
   return { columns, loading, error }
 }

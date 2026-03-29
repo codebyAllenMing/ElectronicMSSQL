@@ -14,7 +14,7 @@ type Props = {
 }
 
 export default function SchemaDetail({ database, tableSchema, tableName, onBack }: Props): JSX.Element {
-  const { columns, loading, error } = useColumns(database, tableName)
+  const { columns, loading, error } = useColumns(database, tableSchema, tableName)
   const [tab, setTab] = useState<Tab>('data')
   const [ddl, setDdl] = useState<string | null>(null)
   const [loadingDdl, setLoadingDdl] = useState(false)
@@ -22,7 +22,7 @@ export default function SchemaDetail({ database, tableSchema, tableName, onBack 
   const handleShowDdl = async (): Promise<void> => {
     setLoadingDdl(true)
     try {
-      const result = await window.api.generateDdl(database, [tableName])
+      const result = await window.api.generateDdl(database, [{ tableSchema, tableName }])
       setDdl(result)
     } finally {
       setLoadingDdl(false)
@@ -30,7 +30,7 @@ export default function SchemaDetail({ database, tableSchema, tableName, onBack 
   }
 
   const handleExport = async (): Promise<void> => {
-    const source = ddl ?? (await window.api.generateDdl(database, [tableName]))
+    const source = ddl ?? (await window.api.generateDdl(database, [{ tableSchema, tableName }]))
     await window.api.exportDdl(source, `${tableName}.sql`)
   }
 

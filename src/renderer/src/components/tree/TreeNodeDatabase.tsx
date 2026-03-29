@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useTables } from '../../hooks/use-database'
-import TreeNode from './TreeNode'
+import TreeNodeSchema from './TreeNodeSchema'
 import type { AppView } from '../../app'
 
 type Props = {
@@ -11,6 +11,16 @@ type Props = {
 export default function TreeNodeDatabase({ database, onViewChange }: Props): JSX.Element {
   const [expanded, setExpanded] = useState(false)
   const { tables, loading } = useTables(expanded ? database : null)
+
+  const schemaGroups = useMemo(() => {
+    const map = new Map<string, typeof tables>()
+    for (const table of tables) {
+      const group = map.get(table.tableSchema) ?? []
+      group.push(table)
+      map.set(table.tableSchema, group)
+    }
+    return Array.from(map.entries()).sort(([a], [b]) => a.localeCompare(b))
+  }, [tables])
 
   const handleDatabaseClick = (): void => {
     setExpanded(true)
@@ -42,18 +52,14 @@ export default function TreeNodeDatabase({ database, onViewChange }: Props): JSX
           {loading && (
             <li className="px-3 py-1 text-xs text-gray-400">Loading...</li>
           )}
-          {tables.map((table) => (
-            <TreeNode
-              key={table.tableName}
-              label={table.tableName}
-              onClick={() =>
-                onViewChange({
-                  type: 'schema-detail',
-                  database,
-                  tableSchema: table.tableSchema,
-                  tableName: table.tableName
-                })
-              }
+          {schemaGroups.map(([schema, schemaTables]) => (
+            <TreeNodeSchema
+              key={schema}
+              schema={schema}
+              tables={schemaTables}
+              database={database}
+              defaultExpanded={schemaGroups.length === 1}
+              onViewChange={onViewChange}
             />
           ))}
         </ul>

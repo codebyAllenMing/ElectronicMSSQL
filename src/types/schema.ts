@@ -18,6 +18,7 @@ export type ColumnInfo = {
   defaultValue: string | null
   isPrimaryKey: boolean
   isForeignKey: boolean
+  isIdentity: boolean
   referencedTable: string | null
   referencedColumn: string | null
 }

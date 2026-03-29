@@ -58,8 +58,10 @@ export function registerSchemaHandlers(): void {
         (
           SELECT SUM(p.rows)
           FROM sys.tables st
+          JOIN sys.schemas sc ON st.schema_id = sc.schema_id
           JOIN sys.partitions p ON st.object_id = p.object_id
           WHERE st.name = t.TABLE_NAME
+            AND sc.name = t.TABLE_SCHEMA
             AND p.index_id IN (0, 1)
         ) AS [rowCount]
       FROM INFORMATION_SCHEMA.TABLES t
@@ -72,12 +74,13 @@ export function registerSchemaHandlers(): void {
     return result.recordset as TableInfo[]
   })
 
-  ipcMain.handle('db:getColumns', async (_, database: string, tableName: string) => {
+  ipcMain.handle('db:getColumns', async (_, database: string, tableSchema: string, tableName: string) => {
     const pool = await getPool(database)
 
     const result = await pool
       .request()
       .input('tableName', sql.NVarChar, tableName)
+      .input('tableSchema', sql.NVarChar, tableSchema)
       .query(`
         SELECT
           c.COLUMN_NAME AS columnName,
@@ -87,6 +90,7 @@ export function registerSchemaHandlers(): void {
           c.COLUMN_DEFAULT AS defaultValue,
           CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS isPrimaryKey,
           CASE WHEN fk.COLUMN_NAME IS NOT NULL THEN 1 ELSE 0 END AS isForeignKey,
+          CASE WHEN ic.name IS NOT NULL THEN 1 ELSE 0 END AS isIdentity,
           fk.REFERENCED_TABLE AS referencedTable,
           fk.REFERENCED_COLUMN AS referencedColumn
         FROM INFORMATION_SCHEMA.COLUMNS c
@@ -97,6 +101,7 @@ export function registerSchemaHandlers(): void {
             ON tc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
           WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
             AND tc.TABLE_NAME = @tableName
+            AND tc.TABLE_SCHEMA = @tableSchema
         ) pk ON c.COLUMN_NAME = pk.COLUMN_NAME
         LEFT JOIN (
           SELECT
@@ -109,8 +114,17 @@ export function registerSchemaHandlers(): void {
           JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE rku
             ON rc.UNIQUE_CONSTRAINT_NAME = rku.CONSTRAINT_NAME
           WHERE ku.TABLE_NAME = @tableName
+            AND ku.TABLE_SCHEMA = @tableSchema
         ) fk ON c.COLUMN_NAME = fk.COLUMN_NAME
+        LEFT JOIN (
+          SELECT ic2.name
+          FROM sys.identity_columns ic2
+          JOIN sys.tables t ON ic2.object_id = t.object_id
+          JOIN sys.schemas s ON t.schema_id = s.schema_id
+          WHERE t.name = @tableName AND s.name = @tableSchema
+        ) ic ON c.COLUMN_NAME = ic.name
         WHERE c.TABLE_NAME = @tableName
+          AND c.TABLE_SCHEMA = @tableSchema
         ORDER BY c.ORDINAL_POSITION
       `)
 
@@ -119,14 +133,15 @@ export function registerSchemaHandlers(): void {
     return result.recordset as ColumnInfo[]
   })
 
-  ipcMain.handle('db:generateDdl', async (_, database: string, tableNames: string[]) => {
+  ipcMain.handle('db:generateDdl', async (_, database: string, tables: { tableSchema: string; tableName: string }[]) => {
     const pool = await getPool(database)
     const ddlParts: string[] = []
 
-    for (const tableName of tableNames) {
+    for (const { tableSchema, tableName } of tables) {
       const colResult = await pool
         .request()
         .input('tableName', sql.NVarChar, tableName)
+        .input('tableSchema', sql.NVarChar, tableSchema)
         .query(`
           SELECT
             c.COLUMN_NAME,
@@ -138,12 +153,14 @@ export function registerSchemaHandlers(): void {
             c.COLUMN_DEFAULT
           FROM INFORMATION_SCHEMA.COLUMNS c
           WHERE c.TABLE_NAME = @tableName
+            AND c.TABLE_SCHEMA = @tableSchema
           ORDER BY c.ORDINAL_POSITION
         `)
 
       const pkResult = await pool
         .request()
         .input('tableName', sql.NVarChar, tableName)
+        .input('tableSchema', sql.NVarChar, tableSchema)
         .query(`
           SELECT ku.COLUMN_NAME, tc.CONSTRAINT_NAME
           FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
@@ -151,17 +168,20 @@ export function registerSchemaHandlers(): void {
             ON tc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
           WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
             AND tc.TABLE_NAME = @tableName
+            AND tc.TABLE_SCHEMA = @tableSchema
           ORDER BY ku.ORDINAL_POSITION
         `)
 
       const fkResult = await pool
         .request()
         .input('tableName', sql.NVarChar, tableName)
+        .input('tableSchema', sql.NVarChar, tableSchema)
         .query(`
           SELECT
             ku.COLUMN_NAME,
             rc.CONSTRAINT_NAME,
             rku.TABLE_NAME AS REFERENCED_TABLE,
+            rku.TABLE_SCHEMA AS REFERENCED_SCHEMA,
             rku.COLUMN_NAME AS REFERENCED_COLUMN
           FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
           JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
@@ -169,12 +189,29 @@ export function registerSchemaHandlers(): void {
           JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE rku
             ON rc.UNIQUE_CONSTRAINT_NAME = rku.CONSTRAINT_NAME
           WHERE ku.TABLE_NAME = @tableName
+            AND ku.TABLE_SCHEMA = @tableSchema
+        `)
+
+      const identityResult = await pool
+        .request()
+        .input('tableName', sql.NVarChar, tableName)
+        .input('tableSchema', sql.NVarChar, tableSchema)
+        .query(`
+          SELECT c.name AS COLUMN_NAME, ic.seed_value, ic.increment_value
+          FROM sys.identity_columns ic
+          JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+          JOIN sys.tables t ON c.object_id = t.object_id
+          JOIN sys.schemas s ON t.schema_id = s.schema_id
+          WHERE t.name = @tableName AND s.name = @tableSchema
         `)
 
       const columns = colResult.recordset
       const pkColumns = pkResult.recordset.map((r) => r.COLUMN_NAME as string)
       const pkConstraintName = pkResult.recordset[0]?.CONSTRAINT_NAME ?? `PK_${tableName}`
       const fkRows = fkResult.recordset
+      const identityMap = new Map(
+        identityResult.recordset.map((r) => [r.COLUMN_NAME as string, { seed: r.seed_value, increment: r.increment_value }])
+      )
 
       const colDefs = columns.map((col) => {
         let typeDef = col.DATA_TYPE as string
@@ -186,10 +223,12 @@ export function registerSchemaHandlers(): void {
           typeDef += `(${col.NUMERIC_PRECISION}, ${col.NUMERIC_SCALE})`
         }
 
+        const identity = identityMap.get(col.COLUMN_NAME as string)
+        const identityDef = identity ? ` IDENTITY(${identity.seed},${identity.increment})` : ''
         const nullable = col.IS_NULLABLE === 'YES' ? 'NULL' : 'NOT NULL'
-        const defaultVal = col.COLUMN_DEFAULT ? ` DEFAULT ${col.COLUMN_DEFAULT}` : ''
+        const defaultVal = !identity && col.COLUMN_DEFAULT ? ` DEFAULT ${col.COLUMN_DEFAULT}` : ''
 
-        return `    [${col.COLUMN_NAME}] ${typeDef.toUpperCase()} ${nullable}${defaultVal}`
+        return `    [${col.COLUMN_NAME}] ${typeDef.toUpperCase()}${identityDef} ${nullable}${defaultVal}`
       })
 
       if (pkColumns.length > 0) {
@@ -200,11 +239,11 @@ export function registerSchemaHandlers(): void {
 
       for (const fk of fkRows) {
         colDefs.push(
-          `    CONSTRAINT [${fk.CONSTRAINT_NAME}] FOREIGN KEY ([${fk.COLUMN_NAME}]) REFERENCES [${fk.REFERENCED_TABLE}] ([${fk.REFERENCED_COLUMN}])`
+          `    CONSTRAINT [${fk.CONSTRAINT_NAME}] FOREIGN KEY ([${fk.COLUMN_NAME}]) REFERENCES [${fk.REFERENCED_SCHEMA}].[${fk.REFERENCED_TABLE}] ([${fk.REFERENCED_COLUMN}])`
         )
       }
 
-      const ddl = `CREATE TABLE [${tableName}] (\n${colDefs.join(',\n')}\n);`
+      const ddl = `CREATE TABLE [${tableSchema}].[${tableName}] (\n${colDefs.join(',\n')}\n);`
       ddlParts.push(ddl)
     }
 
