@@ -2,7 +2,7 @@
 
 A personal Electron desktop app for browsing MSSQL database structure and exporting DDL.
 
-**Version:** 1.0.8
+**Version:** 1.0.13
 
 ---
 
@@ -102,6 +102,9 @@ src/
 ## Changelog
 
 <!-- New versions go below the previous one -->
+
+### 1.0.13 — 2026-03-30
+- Fix: move Inter font `@import` from CSS to JS entry point to resolve CI build failure
 
 ### 1.0.8 — 2026-03-30
 - Fix: `getAppVersion` crash in preload — `app` module is main-process only, now routed via IPC
