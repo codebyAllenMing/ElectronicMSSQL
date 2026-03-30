@@ -11,6 +11,7 @@ declare global {
                 database: string
                 user: string
                 passwordSet: boolean
+                encrypt: boolean
             }>
             testConnection: (connection: {
                 server: string
@@ -18,6 +19,7 @@ declare global {
                 database: string
                 user: string
                 password: string
+                encrypt: boolean
             }) => Promise<{ success: boolean; error?: string }>
             saveConnectionSettings: (connection: {
                 server: string
@@ -25,6 +27,7 @@ declare global {
                 database: string
                 user: string
                 password: string
+                encrypt: boolean
             }) => Promise<{ success: boolean; error?: string }>
             getDatabases: () => Promise<string[]>
             getTables: (database: string) => Promise<TableInfo[]>

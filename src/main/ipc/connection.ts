@@ -11,6 +11,7 @@ type AppSettings = {
         database: string
         user: string
         password: string // stored as "enc:<base64>" or plain (legacy)
+        encrypt: boolean
     }
     slack?: {
         webhookUrl: string
@@ -24,7 +25,7 @@ function settingsPath(): string {
 }
 
 const defaultSettings: AppSettings = {
-    connection: { server: '', port: 1433, database: '', user: '', password: '' }
+    connection: { server: '', port: 1433, database: '', user: '', password: '', encrypt: true }
 }
 
 export function loadSettings(): AppSettings {
@@ -57,7 +58,7 @@ function encryptPassword(plain: string): string {
 }
 
 function buildConfig(settings: AppSettings): sql.config {
-    const { server, port, database, user, password } = settings.connection
+    const { server, port, database, user, password, encrypt } = settings.connection
     return {
         server,
         port,
@@ -65,8 +66,8 @@ function buildConfig(settings: AppSettings): sql.config {
         user,
         password: decryptPassword(password),
         options: {
-            encrypt: false,
-            trustServerCertificate: true
+            encrypt,
+            trustServerCertificate: !encrypt
         }
     }
 }
@@ -104,8 +105,8 @@ export function registerConnectionHandlers(): void {
     // Returns settings WITHOUT password — renderer never receives the password
     ipcMain.handle('db:getConnectionSettings', () => {
         const settings = loadSettings()
-        const { password: _password, ...rest } = settings.connection
-        return { ...rest, passwordSet: _password.length > 0 }
+        const { password, ...rest } = settings.connection
+        return { ...rest, passwordSet: password.length > 0 }
     })
 
     ipcMain.handle(
@@ -118,6 +119,7 @@ export function registerConnectionHandlers(): void {
                 database: string
                 user: string
                 password: string
+                encrypt: boolean
             }
         ) => {
             const existing = loadSettings()
@@ -133,7 +135,10 @@ export function registerConnectionHandlers(): void {
                     database: 'master',
                     user: incoming.user,
                     password: plainPassword,
-                    options: { encrypt: false, trustServerCertificate: true }
+                    options: {
+                        encrypt: incoming.encrypt,
+                        trustServerCertificate: !incoming.encrypt
+                    }
                 }).connect()
                 await pool.close()
                 return { success: true }
@@ -156,6 +161,7 @@ export function registerConnectionHandlers(): void {
                 database: string
                 user: string
                 password: string
+                encrypt: boolean
             }
         ) => {
             const existing = loadSettings()
@@ -180,7 +186,10 @@ export function registerConnectionHandlers(): void {
                     database: 'master',
                     user: incoming.user,
                     password: plainPassword,
-                    options: { encrypt: false, trustServerCertificate: true }
+                    options: {
+                        encrypt: incoming.encrypt,
+                        trustServerCertificate: !incoming.encrypt
+                    }
                 }).connect()
                 await pool.close()
             } catch (err) {
@@ -195,7 +204,8 @@ export function registerConnectionHandlers(): void {
                 port: incoming.port,
                 database: incoming.database,
                 user: incoming.user,
-                password: storedPassword
+                password: storedPassword,
+                encrypt: incoming.encrypt
             }
 
             writeFileSync(settingsPath(), JSON.stringify({ connection }, null, 2), 'utf-8')

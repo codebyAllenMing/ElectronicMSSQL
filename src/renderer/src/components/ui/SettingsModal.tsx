@@ -7,6 +7,7 @@ type FormState = {
     database: string
     user: string
     password: string // always empty on load; only populated when user types a new one
+    encrypt: boolean
 }
 
 type Props = {
@@ -20,7 +21,8 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
         port: 1433,
         database: '',
         user: '',
-        password: ''
+        password: '',
+        encrypt: true
     })
     const [passwordSet, setPasswordSet] = useState(false)
     const [loading, setLoading] = useState(true)
@@ -39,7 +41,8 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
                 port: s.port,
                 database: s.database,
                 user: s.user,
-                password: ''
+                password: '',
+                encrypt: s.encrypt
             })
             setPasswordSet(s.passwordSet)
             setLoading(false)
@@ -79,7 +82,7 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
         }
     }
 
-    const set = (field: keyof FormState, value: string | number): void => {
+    const set = (field: keyof FormState, value: string | number | boolean): void => {
         setForm((prev) => ({ ...prev, [field]: value }))
         setError(null)
         setTestResult(null)
@@ -207,6 +210,19 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
                                     Password is set. Enter a new one to replace it.
                                 </p>
                             )}
+                            <Field label="Encrypt">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={form.encrypt}
+                                        onChange={(e) => set('encrypt', e.target.checked)}
+                                        className="w-4 h-4 accent-blue-500"
+                                    />
+                                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                                        Require encrypted connection (Azure / SSL)
+                                    </span>
+                                </label>
+                            </Field>
                             <div className="flex items-center gap-3 pl-24">
                                 <button
                                     type="button"
