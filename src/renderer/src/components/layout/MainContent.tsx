@@ -5,6 +5,7 @@ import type { AppView } from '../../app'
 
 type Props = {
     view: AppView
+    connected: boolean
     onViewChange: (view: AppView) => void
     getSelectedRows: (tableSchema: string, tableName: string) => Record<string, unknown>[]
     onSelectionChange: (
@@ -17,10 +18,20 @@ type Props = {
 
 export default function MainContent({
     view,
+    connected,
     onViewChange,
     getSelectedRows,
     onSelectionChange
 }: Props): JSX.Element {
+    if (!connected) {
+        return (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2 text-gray-400 dark:text-gray-600">
+                <span className="w-4 h-4 rounded-full bg-red-500" />
+                <p className="text-sm font-medium">No Connection</p>
+            </div>
+        )
+    }
+
     if (view.type === 'empty') {
         return (
             <div className="flex-1 flex items-center justify-center text-gray-400 dark:text-gray-600">

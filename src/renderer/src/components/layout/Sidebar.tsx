@@ -1,15 +1,21 @@
 import { useState, useEffect } from 'react'
-import { useDatabases } from '../../hooks/use-database'
 import TreeView from '../tree/TreeView'
 import SettingsModal from '../ui/SettingsModal'
 import type { AppView } from '../../app'
+import type { ConnectionInfo } from '../../../../types/schema'
 
 type Props = {
+    databases: string[]
+    connectionInfo: ConnectionInfo | null
+    loading: boolean
+    error: string | null
+    connected: boolean
+    reload: () => void
+    disconnect: () => void
     onViewChange: (view: AppView) => void
 }
 
-export default function Sidebar({ onViewChange }: Props): JSX.Element {
-    const { databases, connectionInfo, loading, error, reload } = useDatabases()
+export default function Sidebar({ databases, connectionInfo, loading, error, connected, reload, disconnect, onViewChange }: Props): JSX.Element {
     const [showSettings, setShowSettings] = useState(false)
     const [appVersion, setAppVersion] = useState('')
 
@@ -21,14 +27,28 @@ export default function Sidebar({ onViewChange }: Props): JSX.Element {
         <>
             <aside className="w-64 shrink-0 flex flex-col border-r border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900 overflow-hidden">
                 <div className="px-3 py-2 border-b border-gray-200 dark:border-gray-800">
-                    <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                        Server
-                    </p>
-                    {connectionInfo && (
-                        <p className="text-sm text-gray-700 dark:text-gray-300 mt-0.5 truncate">
-                            {connectionInfo.server}:{connectionInfo.port}
+                    <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400">
+                            Server
                         </p>
-                    )}
+                        <button
+                            onClick={connected ? disconnect : reload}
+                            disabled={loading}
+                            className={`text-xs px-2 py-0.5 rounded transition-colors ${
+                                connected
+                                    ? 'text-red-500 hover:bg-red-50 dark:hover:bg-red-950'
+                                    : 'text-green-600 hover:bg-green-50 dark:hover:bg-green-950'
+                            } disabled:opacity-40`}
+                        >
+                            {loading ? '...' : connected ? '斷開' : '連接'}
+                        </button>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${connected ? 'bg-green-500' : loading ? 'bg-yellow-400' : 'bg-red-500'}`} />
+                        <p className="text-sm text-gray-700 dark:text-gray-300 truncate">
+                            {connectionInfo ? `${connectionInfo.server}:${connectionInfo.port}` : '—'}
+                        </p>
+                    </div>
                 </div>
 
                 <div className="flex-1 overflow-y-auto">

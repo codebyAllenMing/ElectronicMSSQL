@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { useTheme } from './hooks/use-theme'
 import { LoadingContext, useLoadingReducer } from './hooks/use-loading'
+import { useDatabases } from './hooks/use-database'
 import Sidebar from './components/layout/Sidebar'
 import MainContent from './components/layout/MainContent'
 import ThemeToggle from './components/ui/ThemeToggle'
@@ -23,6 +24,8 @@ type DataSelection = {
 export default function App(): JSX.Element {
     const { theme, toggleTheme } = useTheme()
     const loadingCtx = useLoadingReducer()
+    const { databases, connectionInfo, loading: dbLoading, error: dbError, disconnected, reload, disconnect } = useDatabases()
+    const connected = !dbLoading && !dbError && !disconnected
     const [view, setView] = useState<AppView>({ type: 'empty' })
     const [dataSelections, setDataSelections] = useState<Map<string, DataSelection>>(new Map())
     const [exportingData, setExportingData] = useState(false)
@@ -87,12 +90,21 @@ export default function App(): JSX.Element {
         <LoadingContext.Provider value={loadingCtx}>
             <div className={theme === 'dark' ? 'dark' : ''}>
                 <div className="flex h-screen bg-white dark:bg-gray-950 text-gray-900 dark:text-gray-100 overflow-hidden">
-                    <Sidebar onViewChange={handleViewChange} />
+                    <Sidebar
+                        databases={databases}
+                        connectionInfo={connectionInfo}
+                        loading={dbLoading}
+                        error={dbError}
+                        connected={connected}
+                        reload={reload}
+                        disconnect={disconnect}
+                        onViewChange={handleViewChange}
+                    />
                     <div className="relative flex-1 flex flex-col overflow-hidden">
                         <UpdateBanner />
                         <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-800">
                             <div>
-                                {totalSelectedRows > 0 && (
+                                {totalSelectedRows > 0 && connected && (
                                     <Button
                                         variant="primary"
                                         onClick={handleExportData}
@@ -108,6 +120,7 @@ export default function App(): JSX.Element {
                         </div>
                         <MainContent
                             view={view}
+                            connected={connected}
                             onViewChange={handleViewChange}
                             getSelectedRows={getSelectedRows}
                             onSelectionChange={handleSelectionChange}

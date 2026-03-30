@@ -79,15 +79,19 @@ export function useDatabases(): {
     connectionInfo: ConnectionInfo | null
     loading: boolean
     error: string | null
+    disconnected: boolean
     reload: () => void
+    disconnect: () => void
 } {
     const [databases, setDatabases] = useState<string[]>([])
     const [connectionInfo, setConnectionInfo] = useState<ConnectionInfo | null>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
+    const [disconnected, setDisconnected] = useState(false)
     const [tick, setTick] = useState(0)
 
     useEffect(() => {
+        if (disconnected) return
         setLoading(true)
         setError(null)
 
@@ -106,11 +110,21 @@ export function useDatabases(): {
             }
         }
         load()
-    }, [tick])
+    }, [tick, disconnected])
 
-    const reload = (): void => setTick((t) => t + 1)
+    const reload = (): void => {
+        setDisconnected(false)
+        setTick((t) => t + 1)
+    }
+    const disconnect = (): void => {
+        setDisconnected(true)
+        setDatabases([])
+        setConnectionInfo(null)
+        setLoading(false)
+        setError(null)
+    }
 
-    return { databases, connectionInfo, loading, error, reload }
+    return { databases, connectionInfo, loading, error, disconnected, reload, disconnect }
 }
 
 export function useTables(database: string | null): {
