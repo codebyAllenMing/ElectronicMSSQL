@@ -239,7 +239,7 @@ export default function TableData({
                         {error}
                     </div>
                 )}
-                {!error && columns.length === 0 && !loading && (
+                {!error && columns.length === 0 && (
                     <div className="flex items-center justify-center h-32 text-sm text-gray-400">
                         No data
                     </div>

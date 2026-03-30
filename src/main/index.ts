@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow } from 'electron'
+import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerConnectionHandlers, loadSettings } from './ipc/connection'
@@ -48,8 +48,10 @@ app.whenReady().then(() => {
     initSlack(settings.slack?.webhookUrl ?? '')
 
     app.on('browser-window-created', (_, window) => {
-        optimizer.watchWindowShortcuts(window)
+        if (is.dev) optimizer.watchWindowShortcuts(window)
     })
+
+    ipcMain.handle('app:getVersion', () => app.getVersion())
 
     registerConnectionHandlers()
     registerSchemaHandlers()

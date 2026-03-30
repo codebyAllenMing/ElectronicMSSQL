@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useDatabases } from '../../hooks/use-database'
 import TreeView from '../tree/TreeView'
 import SettingsModal from '../ui/SettingsModal'
@@ -11,6 +11,11 @@ type Props = {
 export default function Sidebar({ onViewChange }: Props): JSX.Element {
     const { databases, connectionInfo, loading, error, reload } = useDatabases()
     const [showSettings, setShowSettings] = useState(false)
+    const [appVersion, setAppVersion] = useState('')
+
+    useEffect(() => {
+        window.api.getAppVersion().then(setAppVersion)
+    }, [])
 
     return (
         <>
@@ -37,7 +42,7 @@ export default function Sidebar({ onViewChange }: Props): JSX.Element {
                 </div>
 
                 {/* Bottom settings button */}
-                <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-800">
+                <div className="px-3 py-2 border-t border-gray-200 dark:border-gray-800 flex flex-col gap-2">
                     <button
                         onClick={() => setShowSettings(true)}
                         title="Connection Settings"
@@ -63,6 +68,9 @@ export default function Sidebar({ onViewChange }: Props): JSX.Element {
                         </svg>
                         <span className="text-xs">Connection Settings</span>
                     </button>
+                    <p className="text-xs text-gray-400 dark:text-gray-600 px-2 border-t border-gray-200 dark:border-gray-800 pt-2">
+                        {appVersion && `v${appVersion}`}
+                    </p>
                 </div>
             </aside>
 

@@ -2,7 +2,7 @@
 
 A personal Electron desktop app for browsing MSSQL database structure and exporting DDL.
 
-**Version:** 1.0.4
+**Version:** 1.0.8
 
 ---
 
@@ -102,6 +102,25 @@ src/
 ## Changelog
 
 <!-- New versions go below the previous one -->
+
+### 1.0.8 — 2026-03-30
+- Fix: `getAppVersion` crash in preload — `app` module is main-process only, now routed via IPC
+- Sidebar: version number separated from settings button with a divider line
+
+### 1.0.7 — 2026-03-30
+- Custom app icon (build/icon.png / .icns / .ico)
+- Inter Variable font applied globally
+- Encrypt toggle in Connection Settings (SSL support for Azure SQL)
+- Settings modal width increased for better layout
+
+### 1.0.6 — 2026-03-30
+- Slack error notifications for update errors, connection errors, and unhandled exceptions
+- Auto-update error surfaced in UI banner for debugging
+
+### 1.0.5 — 2026-03-30
+- Auto-update via electron-updater + GitHub Releases
+- Fix: handle missing `appsettings.json` on first launch (app no longer crashes)
+- Fix: publish config uses `releaseType: release` (removes draft mode)
 
 ### 1.0.4 — 2026-03-30
 - Connection settings UI: gear icon in sidebar bottom-left

@@ -1,6 +1,6 @@
 {
   "name": "electronic-mssql",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "MSSQL schema browser and DDL exporter",
   "main": "./out/main/index.js",
   "scripts": {
@@ -13,6 +13,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx}\""
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.2.8",
     "electron-updater": "^6.8.3",
     "mssql": "^11.0.1"
   },

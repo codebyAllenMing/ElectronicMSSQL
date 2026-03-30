@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, IpcRendererEvent } from 'electron'
 
 contextBridge.exposeInMainWorld('api', {
+    getAppVersion: () => ipcRenderer.invoke('app:getVersion'),
     getConnectionInfo: () => ipcRenderer.invoke('db:getConnectionInfo'),
     getConnectionSettings: () => ipcRenderer.invoke('db:getConnectionSettings'),
     testConnection: (connection: {

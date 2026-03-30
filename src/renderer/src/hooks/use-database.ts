@@ -4,6 +4,7 @@ import type { TableInfo, ColumnInfo, ConnectionInfo } from '../../../types/schem
 declare global {
     interface Window {
         api: {
+            getAppVersion: () => Promise<string>
             getConnectionInfo: () => Promise<ConnectionInfo>
             getConnectionSettings: () => Promise<{
                 server: string

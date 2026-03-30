@@ -1,41 +1,33 @@
-import { ipcMain, app, dialog } from 'electron'
-import { join } from 'path'
-import { readFileSync, writeFileSync } from 'fs'
+import { ipcMain, dialog } from 'electron'
+import { writeFileSync } from 'fs'
 import sql from 'mssql'
 import type { TableInfo, ColumnInfo } from '../../types/schema'
-
-type AppSettings = {
-    connection: {
-        server: string
-        port: number
-        database: string
-        user: string
-        password: string
-    }
-}
-
-function loadSettings(): AppSettings {
-    const settingsPath = app.isPackaged
-        ? join(app.getPath('userData'), 'appsettings.json')
-        : join(process.cwd(), 'appsettings.json')
-
-    const raw = readFileSync(settingsPath, 'utf-8')
-    return JSON.parse(raw) as AppSettings
-}
+import { loadSettings } from './connection'
 
 async function getPool(database: string): Promise<sql.ConnectionPool> {
     const settings = loadSettings()
-    const { server, port, user, password } = settings.connection
+    const { server, port, user, password, encrypt } = settings.connection
+
+    // Decrypt password (stored as "enc:<base64>")
+    let plainPassword = password
+    if (password.startsWith('enc:')) {
+        const { safeStorage } = await import('electron')
+        try {
+            plainPassword = safeStorage.decryptString(Buffer.from(password.slice(4), 'base64'))
+        } catch {
+            plainPassword = ''
+        }
+    }
 
     const pool = new sql.ConnectionPool({
         server,
         port,
         database,
         user,
-        password,
+        password: plainPassword,
         options: {
-            encrypt: false,
-            trustServerCertificate: true
+            encrypt: encrypt ?? false,
+            trustServerCertificate: !(encrypt ?? false)
         }
     })
     return pool.connect()
