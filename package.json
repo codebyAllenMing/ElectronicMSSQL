@@ -1,6 +1,6 @@
 {
   "name": "electronic-mssql",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "MSSQL schema browser and DDL exporter",
   "main": "./out/main/index.js",
   "scripts": {

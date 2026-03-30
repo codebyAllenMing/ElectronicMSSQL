@@ -19,9 +19,17 @@ function settingsPath(): string {
         : join(process.cwd(), 'appsettings.json')
 }
 
+const defaultSettings: AppSettings = {
+    connection: { server: '', port: 1433, database: '', user: '', password: '' }
+}
+
 function loadSettings(): AppSettings {
-    const raw = readFileSync(settingsPath(), 'utf-8')
-    return JSON.parse(raw) as AppSettings
+    try {
+        const raw = readFileSync(settingsPath(), 'utf-8')
+        return JSON.parse(raw) as AppSettings
+    } catch {
+        return defaultSettings
+    }
 }
 
 function decryptPassword(stored: string): string {
