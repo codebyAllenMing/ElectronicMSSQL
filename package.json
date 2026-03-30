@@ -39,7 +39,8 @@
     "publish": {
       "provider": "github",
       "owner": "codebyAllenMing",
-      "repo": "ElectronicMSSQL"
+      "repo": "ElectronicMSSQL",
+      "draft": false
     }
   },
   "pnpm": {
