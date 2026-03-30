@@ -2,7 +2,7 @@ import { ipcMain, app, safeStorage } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync } from 'fs'
 import sql from 'mssql'
-import { notifyConnectionError } from '../slack'
+import { notifyConnectionError, encryptWebhookUrl, initSlack } from '../slack'
 
 type AppSettings = {
     connection: {
@@ -208,8 +208,37 @@ export function registerConnectionHandlers(): void {
                 encrypt: incoming.encrypt
             }
 
-            writeFileSync(settingsPath(), JSON.stringify({ connection }, null, 2), 'utf-8')
+            const saved: AppSettings = { connection }
+            if (existing.slack?.webhookUrl) {
+                saved.slack = { webhookUrl: existing.slack.webhookUrl }
+            }
+            writeFileSync(settingsPath(), JSON.stringify(saved, null, 2), 'utf-8')
             return { success: true }
         }
     )
+
+    ipcMain.handle('db:getSlackSettings', () => {
+        const settings = loadSettings()
+        const stored = settings.slack?.webhookUrl ?? ''
+        if (!stored) return { webhookSet: false, maskedUrl: '' }
+        let plain = stored
+        if (stored.startsWith('enc:')) {
+            try {
+                plain = safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64'))
+            } catch {
+                return { webhookSet: true, maskedUrl: '******' }
+            }
+        }
+        const visible = plain.slice(0, 40)
+        return { webhookSet: true, maskedUrl: `${visible}******` }
+    })
+
+    ipcMain.handle('db:saveSlackSettings', (_, webhookUrl: string) => {
+        const settings = loadSettings()
+        const encrypted = webhookUrl ? encryptWebhookUrl(webhookUrl) : ''
+        settings.slack = { webhookUrl: encrypted }
+        writeFileSync(settingsPath(), JSON.stringify(settings, null, 2), 'utf-8')
+        initSlack(encrypted)
+        return { success: true }
+    })
 }

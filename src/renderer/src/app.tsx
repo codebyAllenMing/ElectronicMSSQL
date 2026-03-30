@@ -68,22 +68,35 @@ export default function App(): JSX.Element {
         setView(newView)
     }
 
+    const getInsertSql = async (): Promise<{ sql: string; database: string }> => {
+        const firstEntry = dataSelections.values().next().value as DataSelection
+        const tables = Array.from(dataSelections.values()).map((s) => ({
+            tableSchema: s.tableSchema,
+            tableName: s.tableName,
+            rows: s.rows
+        }))
+        const sql = await window.api.generateInserts(firstEntry.database, tables)
+        return { sql, database: firstEntry.database }
+    }
+
     const handleExportData = async (): Promise<void> => {
         if (dataSelections.size === 0) return
         setExportingData(true)
         try {
-            const firstEntry = dataSelections.values().next().value as DataSelection
-            const tables = Array.from(dataSelections.values()).map((s) => ({
-                tableSchema: s.tableSchema,
-                tableName: s.tableName,
-                rows: s.rows
-            }))
-            const sql = await window.api.generateInserts(firstEntry.database, tables)
-            const suggestedName = `${firstEntry.database}_data.sql`
+            const { sql, database } = await getInsertSql()
+            const suggestedName = `${database}_data.sql`
             await window.api.exportDdl(sql, suggestedName)
         } finally {
             setExportingData(false)
         }
+    }
+
+    const handlePreviewData = async (): Promise<void> => {
+        if (dataSelections.size === 0) return
+        const { sql, database } = await getInsertSql()
+        await window.api.openChildWindow('sql-preview', sql, {
+            title: `${database} — INSERT Preview`
+        })
     }
 
     return (
@@ -103,17 +116,22 @@ export default function App(): JSX.Element {
                     <div className="relative flex-1 flex flex-col overflow-hidden">
                         <UpdateBanner />
                         <div className="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-800">
-                            <div>
+                            <div className="flex items-center gap-2">
                                 {totalSelectedRows > 0 && connected && (
-                                    <Button
-                                        variant="primary"
-                                        onClick={handleExportData}
-                                        disabled={exportingData}
-                                    >
-                                        {exportingData
-                                            ? 'Exporting...'
-                                            : `Export Data (${totalSelectedRows} rows)`}
-                                    </Button>
+                                    <>
+                                        <Button
+                                            variant="primary"
+                                            onClick={handleExportData}
+                                            disabled={exportingData}
+                                        >
+                                            {exportingData
+                                                ? 'Exporting...'
+                                                : `Export Data (${totalSelectedRows} rows)`}
+                                        </Button>
+                                        <Button onClick={handlePreviewData}>
+                                            Preview
+                                        </Button>
+                                    </>
                                 )}
                             </div>
                             <ThemeToggle theme={theme} onToggle={toggleTheme} />

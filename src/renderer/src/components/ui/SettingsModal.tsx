@@ -6,9 +6,11 @@ type FormState = {
     port: number
     database: string
     user: string
-    password: string // always empty on load; only populated when user types a new one
+    password: string
     encrypt: boolean
 }
+
+type Tab = 'connection' | 'system'
 
 type Props = {
     onClose: () => void
@@ -16,6 +18,7 @@ type Props = {
 }
 
 export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element {
+    const [tab, setTab] = useState<Tab>('connection')
     const [form, setForm] = useState<FormState>({
         server: '',
         port: 1433,
@@ -24,6 +27,10 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
         password: '',
         encrypt: true
     })
+    const [webhookUrl, setWebhookUrl] = useState('')
+    const [webhookSet, setWebhookSet] = useState(false)
+    const [maskedUrl, setMaskedUrl] = useState('')
+    const [webhookSaved, setWebhookSaved] = useState(false)
     const [passwordSet, setPasswordSet] = useState(false)
     const [loading, setLoading] = useState(true)
     const [saving, setSaving] = useState(false)
@@ -35,7 +42,10 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
     const passwordRef = useRef<HTMLInputElement>(null)
 
     useEffect(() => {
-        window.api.getConnectionSettings().then((s) => {
+        Promise.all([
+            window.api.getConnectionSettings(),
+            window.api.getSlackSettings()
+        ]).then(([s, slack]) => {
             setForm({
                 server: s.server,
                 port: s.port,
@@ -45,6 +55,8 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
                 encrypt: s.encrypt
             })
             setPasswordSet(s.passwordSet)
+            setWebhookSet(slack.webhookSet)
+            setMaskedUrl(slack.maskedUrl)
             setLoading(false)
         })
     }, [])
@@ -55,6 +67,9 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
         setSuccess(false)
         try {
             const result = await window.api.saveConnectionSettings(form)
+            if (webhookUrl) {
+                await window.api.saveSlackSettings(webhookUrl)
+            }
             if (result.success) {
                 setSuccess(true)
                 setTimeout(() => {
@@ -64,6 +79,22 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
             } else {
                 setError(result.error ?? 'Failed to connect')
             }
+        } finally {
+            setSaving(false)
+        }
+    }
+
+    const handleSaveSystem = async (): Promise<void> => {
+        setSaving(true)
+        try {
+            if (webhookUrl) {
+                await window.api.saveSlackSettings(webhookUrl)
+                setWebhookSet(true)
+                setMaskedUrl(webhookUrl.slice(0, 40) + '******')
+                setWebhookUrl('')
+            }
+            setWebhookSaved(true)
+            setTimeout(() => setWebhookSaved(false), 1500)
         } finally {
             setSaving(false)
         }
@@ -88,13 +119,20 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
         setTestResult(null)
     }
 
+    const tabClass = (t: Tab): string =>
+        `px-4 py-2 text-xs font-medium transition-colors ${
+            tab === t
+                ? 'text-blue-600 dark:text-blue-400 border-b-2 border-blue-600 dark:border-blue-400'
+                : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+        }`
+
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
             <div className="w-[520px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl">
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
                     <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
-                        Connection Settings
+                        Settings
                     </h2>
                     <button
                         onClick={onClose}
@@ -104,11 +142,21 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
                     </button>
                 </div>
 
+                {/* Tabs */}
+                <div className="flex border-b border-gray-200 dark:border-gray-700">
+                    <button onClick={() => setTab('connection')} className={tabClass('connection')}>
+                        連線設定
+                    </button>
+                    <button onClick={() => setTab('system')} className={tabClass('system')}>
+                        系統設定
+                    </button>
+                </div>
+
                 {/* Body */}
-                <div className="px-5 py-4 space-y-3">
+                <div className="px-5 py-4 space-y-3 min-h-[280px]">
                     {loading ? (
                         <p className="text-sm text-gray-400">Loading...</p>
-                    ) : (
+                    ) : tab === 'connection' ? (
                         <>
                             <Field label="Server">
                                 <input
@@ -169,37 +217,13 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
                                         tabIndex={-1}
                                     >
                                         {showPassword ? (
-                                            <svg
-                                                className="w-4 h-4"
-                                                fill="none"
-                                                viewBox="0 0 24 24"
-                                                stroke="currentColor"
-                                                strokeWidth={1.8}
-                                            >
-                                                <path
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"
-                                                />
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
                                             </svg>
                                         ) : (
-                                            <svg
-                                                className="w-4 h-4"
-                                                fill="none"
-                                                viewBox="0 0 24 24"
-                                                stroke="currentColor"
-                                                strokeWidth={1.8}
-                                            >
-                                                <path
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                                                />
-                                                <path
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
-                                                />
+                                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                                             </svg>
                                         )}
                                     </button>
@@ -239,11 +263,30 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
                                     <span className="text-xs text-red-500">Failed</span>
                                 )}
                             </div>
+                            {error && <p className="text-xs text-red-500">{error}</p>}
+                            {success && <p className="text-xs text-green-500">Connected! Reloading...</p>}
+                        </>
+                    ) : (
+                        <>
+                            <Field label="Slack">
+                                <input
+                                    type="text"
+                                    value={webhookUrl}
+                                    onChange={(e) => setWebhookUrl(e.target.value)}
+                                    placeholder={webhookSet ? maskedUrl : 'Webhook URL'}
+                                    className={inputClass}
+                                />
+                            </Field>
+                            {webhookSet && webhookUrl.length === 0 && (
+                                <p className="text-xs text-gray-400 pl-24">
+                                    Webhook is set. Enter a new one to replace it.
+                                </p>
+                            )}
+                            {webhookSaved && (
+                                <p className="text-xs text-green-500 pl-24">Saved!</p>
+                            )}
                         </>
                     )}
-
-                    {error && <p className="text-xs text-red-500">{error}</p>}
-                    {success && <p className="text-xs text-green-500">Connected! Reloading...</p>}
                 </div>
 
                 {/* Footer */}
@@ -251,9 +294,15 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
                     <Button onClick={onClose} disabled={saving}>
                         Cancel
                     </Button>
-                    <Button variant="primary" onClick={handleSave} disabled={saving || loading}>
-                        {saving ? 'Testing...' : 'Save & Connect'}
-                    </Button>
+                    {tab === 'connection' ? (
+                        <Button variant="primary" onClick={handleSave} disabled={saving || loading}>
+                            {saving ? 'Testing...' : 'Save & Connect'}
+                        </Button>
+                    ) : (
+                        <Button variant="primary" onClick={handleSaveSystem} disabled={saving || loading}>
+                            {saving ? 'Saving...' : 'Save'}
+                        </Button>
+                    )}
                 </div>
             </div>
         </div>

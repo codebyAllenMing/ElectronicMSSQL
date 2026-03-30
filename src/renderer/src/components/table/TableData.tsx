@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import { useLoading } from '../../hooks/use-loading'
+import SearchBar from '../search/search-bar'
+import type { SearchFilter } from '../search/search-row'
 
 type Props = {
     database: string
@@ -24,12 +26,21 @@ export default function TableData({
     const [limit, setLimit] = useState<LimitOption>(100)
     const [page, setPage] = useState(1)
     const [total, setTotal] = useState<number | null>(null)
+    const [allColumns, setAllColumns] = useState<string[]>([])
+    const [hiddenColumns, setHiddenColumns] = useState<Set<string>>(new Set())
+    const [colTick, setColTick] = useState(0)
     const [columns, setColumns] = useState<string[]>([])
     const [colOrder, setColOrder] = useState<string[]>([])
     const [colWidths, setColWidths] = useState<Record<string, number>>({})
     const [rows, setRows] = useState<Record<string, unknown>[]>([])
     const [error, setError] = useState<string | null>(null)
+    const [activeFilters, setActiveFilters] = useState<SearchFilter[]>([])
     const { withLoading } = useLoading()
+
+    const visibleColumns = useMemo(
+        () => allColumns.filter((c) => !hiddenColumns.has(c)),
+        [allColumns, hiddenColumns]
+    )
 
     // resize state
     const resizing = useRef<{ col: string; startX: number; startWidth: number } | null>(null)
@@ -69,23 +80,35 @@ export default function TableData({
         })
     }
 
+    // Load all column names once when table changes
+    useEffect(() => {
+        setHiddenColumns(new Set())
+        window.api
+            .getTableData(database, tableSchema, tableName, 1, 0)
+            .then((result) => setAllColumns(result.columns))
+            .catch(() => setAllColumns([]))
+    }, [database, tableSchema, tableName])
+
     useEffect(() => {
         setPage(1)
     }, [limit, tableName])
 
     useEffect(() => {
+        const filters = activeFilters.length > 0 ? activeFilters : undefined
         window.api
-            .getTableCount(database, tableSchema, tableName)
+            .getTableCount(database, tableSchema, tableName, filters)
             .then(setTotal)
             .catch(() => setTotal(null))
-    }, [database, tableSchema, tableName])
+    }, [database, tableSchema, tableName, activeFilters])
 
     useEffect(() => {
         setError(null)
         const offset = (page - 1) * limit
+        const filters = activeFilters.length > 0 ? activeFilters : undefined
+        const selectCols = visibleColumns.length < allColumns.length ? visibleColumns : undefined
         withLoading(() =>
             window.api
-                .getTableData(database, tableSchema, tableName, limit, offset)
+                .getTableData(database, tableSchema, tableName, limit, offset, filters, selectCols)
                 .then((result) => {
                     setColumns(result.columns)
                     setColOrder(result.columns)
@@ -102,7 +125,7 @@ export default function TableData({
                     setError(err instanceof Error ? err.message : 'Failed to load data')
                 )
         )
-    }, [database, tableSchema, tableName, limit, page])
+    }, [database, tableSchema, tableName, limit, page, activeFilters, colTick])
 
     // ── Column resize ────────────────────────────────────────────────
     const onResizeStart = useCallback(
@@ -159,8 +182,53 @@ export default function TableData({
 
     const orderedCols = colOrder.length > 0 ? colOrder : columns
 
+    const handleSearch = (filters: SearchFilter[]): void => {
+        setActiveFilters(filters)
+        setPage(1)
+        onSelectionChange([])
+    }
+
+    const toggleColumn = (col: string): void => {
+        setHiddenColumns((prev) => {
+            const next = new Set(prev)
+            if (next.has(col)) {
+                next.delete(col)
+            } else {
+                if (allColumns.length - next.size <= 1) return prev
+                next.add(col)
+            }
+            return next
+        })
+        setPage(1)
+        setColTick((t) => t + 1)
+        onSelectionChange([])
+    }
+
     return (
         <div className="flex flex-col h-full overflow-hidden">
+            {/* Search */}
+            <SearchBar columns={allColumns} onSearch={handleSearch} />
+            {/* Column chips */}
+            {allColumns.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 px-4 py-2 border-b border-gray-100 dark:border-gray-800">
+                    {allColumns.map((col) => {
+                        const visible = !hiddenColumns.has(col)
+                        return (
+                            <button
+                                key={col}
+                                onClick={() => toggleColumn(col)}
+                                className={`text-xs px-2.5 py-1 rounded-full transition-colors ${
+                                    visible
+                                        ? 'bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300'
+                                        : 'bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-600'
+                                }`}
+                            >
+                                {col}
+                            </button>
+                        )
+                    })}
+                </div>
+            )}
             {/* Toolbar */}
             <div className="flex items-center gap-4 px-4 py-2 border-b border-gray-100 dark:border-gray-800 shrink-0">
                 <div className="flex items-center gap-2">
@@ -257,7 +325,22 @@ export default function TableData({
                     >
                         <thead className="sticky top-0 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 z-10">
                             <tr>
-                                <th className="w-8 px-2 py-2 shrink-0" style={{ width: 32 }} />
+                                <th className="w-8 px-2 py-2 shrink-0" style={{ width: 32 }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={rows.length > 0 && rows.every((r) => selectedKeys.has(JSON.stringify(r)))}
+                                        onChange={(e) => {
+                                            if (e.target.checked) {
+                                                const newRows = rows.filter((r) => !selectedKeys.has(JSON.stringify(r)))
+                                                onSelectionChange([...selectedRows, ...newRows])
+                                            } else {
+                                                const currentKeys = new Set(rows.map((r) => JSON.stringify(r)))
+                                                onSelectionChange(selectedRows.filter((r) => !currentKeys.has(JSON.stringify(r))))
+                                            }
+                                        }}
+                                        className="w-3.5 h-3.5 accent-blue-500 cursor-pointer"
+                                    />
+                                </th>
                                 {orderedCols.map((col) => (
                                     <th
                                         key={col}

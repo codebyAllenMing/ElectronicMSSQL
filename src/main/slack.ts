@@ -1,7 +1,30 @@
+import { safeStorage } from 'electron'
+
 let webhookUrl: string | null = null
 
-export function initSlack(url: string): void {
-    webhookUrl = url || null
+export function initSlack(storedUrl: string): void {
+    if (!storedUrl) {
+        webhookUrl = null
+        return
+    }
+    if (storedUrl.startsWith('enc:')) {
+        try {
+            webhookUrl = safeStorage.decryptString(Buffer.from(storedUrl.slice(4), 'base64'))
+        } catch {
+            webhookUrl = null
+        }
+    } else {
+        webhookUrl = storedUrl
+    }
+}
+
+export function encryptWebhookUrl(plain: string): string {
+    if (!plain) return ''
+    if (plain.startsWith('enc:')) return plain
+    if (safeStorage.isEncryptionAvailable()) {
+        return 'enc:' + safeStorage.encryptString(plain).toString('base64')
+    }
+    return plain
 }
 
 async function send(text: string): Promise<void> {

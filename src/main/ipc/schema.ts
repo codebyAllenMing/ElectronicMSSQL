@@ -3,6 +3,7 @@ import { writeFileSync } from 'fs'
 import sql from 'mssql'
 import type { TableInfo, ColumnInfo } from '../../types/schema'
 import { loadSettings } from './connection'
+import { notifyConnectionError } from '../slack'
 
 async function getPool(database: string): Promise<sql.ConnectionPool> {
     const settings = loadSettings()
@@ -33,8 +34,68 @@ async function getPool(database: string): Promise<sql.ConnectionPool> {
     return pool.connect()
 }
 
+const ALLOWED_OPERATORS = new Set(['=', '!=', '>=', '>', '<=', '<', 'LIKE', 'IN'])
+const ALLOWED_LOGIC = new Set(['AND', 'OR'])
+
+function sanitizeColumnName(col: string): string {
+    // Remove any ] characters to prevent bracket escape injection
+    return col.replace(/\]/g, '')
+}
+
+function buildWhereClause(
+    filters:
+        | { column: string; operator: string; value: string; values?: string[]; likeMode?: string; logic: string }[]
+        | undefined,
+    request: sql.Request
+): string {
+    if (!filters || filters.length === 0) return ''
+    const parts = filters.map((f, i) => {
+        if (!ALLOWED_OPERATORS.has(f.operator)) return null
+        if (i > 0 && !ALLOWED_LOGIC.has(f.logic)) return null
+        const col = sanitizeColumnName(f.column)
+        let clause: string
+        if (f.operator === 'IN' && f.values && f.values.length > 0) {
+            const paramNames = f.values.map((v, j) => {
+                const name = `filterVal${i}_${j}`
+                request.input(name, sql.NVarChar, v)
+                return `@${name}`
+            })
+            clause = `[${col}] IN (${paramNames.join(', ')})`
+        } else if (f.operator === 'LIKE') {
+            const mode = (f as { likeMode?: string }).likeMode ?? 'CONTAINS'
+            const val =
+                mode === 'STARTS' ? `${f.value}%` :
+                mode === 'ENDS' ? `%${f.value}` :
+                `%${f.value}%`
+            request.input(`filterVal${i}`, sql.NVarChar, val)
+            clause = `[${col}] LIKE @filterVal${i}`
+        } else {
+            request.input(`filterVal${i}`, sql.NVarChar, f.value)
+            clause = `[${col}] ${f.operator} @filterVal${i}`
+        }
+        return i === 0 ? clause : `${f.logic} ${clause}`
+    }).filter(Boolean)
+    if (parts.length === 0) return ''
+    return ` WHERE ${parts.join(' ')}`
+}
+
+function safeHandle(
+    channel: string,
+    handler: (event: Electron.IpcMainInvokeEvent, ...args: unknown[]) => Promise<unknown>
+): void {
+    ipcMain.handle(channel, async (event, ...args) => {
+        try {
+            return await handler(event, ...args)
+        } catch (err) {
+            const message = err instanceof Error ? err.message : String(err)
+            notifyConnectionError(channel, message)
+            throw new Error(`Query failed: ${message}`)
+        }
+    })
+}
+
 export function registerSchemaHandlers(): void {
-    ipcMain.handle('db:getTables', async (_, database: string) => {
+    safeHandle('db:getTables', async (_, database: string) => {
         const pool = await getPool(database)
 
         const result = await pool.request().query(`
@@ -66,7 +127,7 @@ export function registerSchemaHandlers(): void {
         return result.recordset as TableInfo[]
     })
 
-    ipcMain.handle(
+    safeHandle(
         'db:getColumns',
         async (_, database: string, tableSchema: string, tableName: string) => {
             const pool = await getPool(database)
@@ -127,7 +188,7 @@ export function registerSchemaHandlers(): void {
         }
     )
 
-    ipcMain.handle(
+    safeHandle(
         'db:generateDdl',
         async (_, database: string, tables: { tableSchema: string; tableName: string }[]) => {
             const pool = await getPool(database)
@@ -311,21 +372,27 @@ export function registerSchemaHandlers(): void {
         }
     )
 
-    ipcMain.handle(
+    safeHandle(
         'db:getTableCount',
-        async (_, database: string, tableSchema: string, tableName: string) => {
+        async (
+            _,
+            database: string,
+            tableSchema: string,
+            tableName: string,
+            filters?: { column: string; operator: string; value: string; logic: string }[]
+        ) => {
             const pool = await getPool(database)
-            const result = await pool
-                .request()
-                .query(
-                    `SELECT COUNT(*) AS total FROM [${database}].[${tableSchema}].[${tableName}]`
-                )
+            const request = pool.request()
+            const where = buildWhereClause(filters, request)
+            const result = await request.query(
+                `SELECT COUNT(*) AS total FROM [${database}].[${tableSchema}].[${tableName}]${where}`
+            )
             await pool.close()
             return result.recordset[0].total as number
         }
     )
 
-    ipcMain.handle(
+    safeHandle(
         'db:getTableData',
         async (
             _,
@@ -333,12 +400,20 @@ export function registerSchemaHandlers(): void {
             tableSchema: string,
             tableName: string,
             limit: number,
-            offset: number
+            offset: number,
+            filters?: { column: string; operator: string; value: string; values?: string[]; likeMode?: string; logic: string }[],
+            selectColumns?: string[]
         ) => {
             const pool = await getPool(database)
-            const result = await pool.request().query(`
-        SELECT * FROM [${database}].[${tableSchema}].[${tableName}]
-        ORDER BY (SELECT NULL)
+            const request = pool.request()
+            const where = buildWhereClause(filters, request)
+            const cols = selectColumns && selectColumns.length > 0
+                ? selectColumns.map((c) => `[${sanitizeColumnName(c)}]`).join(', ')
+                : '*'
+            const orderBy = where ? 'ORDER BY 1' : 'ORDER BY (SELECT NULL)'
+            const result = await request.query(`
+        SELECT ${cols} FROM [${database}].[${tableSchema}].[${tableName}]${where}
+        ${orderBy}
         OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
       `)
             await pool.close()
@@ -349,7 +424,7 @@ export function registerSchemaHandlers(): void {
         }
     )
 
-    ipcMain.handle(
+    safeHandle(
         'db:generateInserts',
         async (
             _,
@@ -446,7 +521,7 @@ export function registerSchemaHandlers(): void {
         }
     )
 
-    ipcMain.handle('db:exportDdl', async (_, ddl: string, suggestedName: string) => {
+    safeHandle('db:exportDdl', async (_, ddl: string, suggestedName: string) => {
         const { canceled, filePath } = await dialog.showSaveDialog({
             title: 'Export DDL',
             defaultPath: suggestedName,

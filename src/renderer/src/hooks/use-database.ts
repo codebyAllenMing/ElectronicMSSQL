@@ -30,6 +30,8 @@ declare global {
                 password: string
                 encrypt: boolean
             }) => Promise<{ success: boolean; error?: string }>
+            getSlackSettings: () => Promise<{ webhookSet: boolean; maskedUrl: string }>
+            saveSlackSettings: (webhookUrl: string) => Promise<{ success: boolean }>
             getDatabases: () => Promise<string[]>
             getTables: (database: string) => Promise<TableInfo[]>
             getColumns: (
@@ -40,14 +42,17 @@ declare global {
             getTableCount: (
                 database: string,
                 tableSchema: string,
-                tableName: string
+                tableName: string,
+                filters?: { column: string; operator: string; value: string; values?: string[]; likeMode?: string; logic: string }[]
             ) => Promise<number>
             getTableData: (
                 database: string,
                 tableSchema: string,
                 tableName: string,
                 limit: number,
-                offset: number
+                offset: number,
+                filters?: { column: string; operator: string; value: string; values?: string[]; likeMode?: string; logic: string }[],
+                selectColumns?: string[]
             ) => Promise<{ columns: string[]; rows: Record<string, unknown>[] }>
             generateDdl: (
                 database: string,
@@ -65,6 +70,12 @@ declare global {
                 ddl: string,
                 suggestedName: string
             ) => Promise<{ success: boolean; filePath?: string }>
+            openChildWindow: (
+                route: string,
+                data: unknown,
+                options?: { width?: number; height?: number; title?: string }
+            ) => Promise<string>
+            getChildWindowData: () => Promise<unknown>
             onUpdateAvailable: (cb: (version: string) => void) => void
             onUpdateProgress: (cb: (percent: number) => void) => void
             onUpdateDownloaded: (cb: () => void) => void

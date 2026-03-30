@@ -1,49 +1,56 @@
 # ElectronicMSSQL
 
-A personal Electron desktop app for browsing MSSQL database structure and exporting DDL.
+A personal Electron desktop app for browsing and querying MSSQL databases. Built as an internal tool for inspecting database structures, previewing data, and exporting schemas or row data as SQL scripts.
 
-**Version:** 1.0.13
+## Why
 
----
+Managing remote MSSQL databases often requires heavy tools like SSMS or Azure Data Studio. This app provides a lightweight, cross-platform alternative focused on schema browsing and data export — nothing more, nothing less.
 
-## Tech Stack
+## What It Does
 
-- Electron 33 + electron-vite 5
-- React 19
-- TypeScript (strict)
-- Tailwind CSS
-- mssql 11
-
----
+- **Connect** to any MSSQL server via SQL Login (with optional SSL/Azure encryption)
+- **Browse** databases, schemas, and tables in a sidebar tree view
+- **Inspect** table schemas: column types, primary keys, foreign keys, identity, defaults
+- **Query** table data with advanced filters (equals, not equals, comparison operators, LIKE, IN)
+- **Toggle columns** on/off to focus on relevant fields (reduces SQL SELECT for performance)
+- **Select rows** and export as INSERT statements (FK-aware topological sort)
+- **Preview SQL** in a separate window before exporting
+- **Export DDL** (CREATE TABLE) for single or multiple tables as `.sql` files
+- **Auto-update** via GitHub Releases with a forced update overlay
 
 ## Features
 
-### Database Browser
-- Connect to MSSQL via `appsettings.json` (SQL Login)
-- Left sidebar tree: Server → Databases → Schema → Tables (lazy-loaded)
+- Light / Dark mode toggle
+- Connection status indicator with connect/disconnect toggle
+- Settings modal with tabs: connection config + system config (Slack webhook)
+- Password and Slack webhook encrypted via Electron `safeStorage`
+- Slack notifications for connection errors, update errors, and unhandled exceptions
+- SQL injection protection: parameterized queries, operator whitelist, column name sanitization
+- Child window system for opening multiple independent preview windows
+- Custom app icon for macOS and Windows
 
-### Data Tab (default view)
-- Browse table rows with pagination (100 / 500 / 1000 rows per page)
-- Displays total row count
-- Drag column headers to reorder
-- Drag column edges to resize width
-- Double-click a cell to copy its value to clipboard
+## Tech Stack
 
-### Schema Tab
-- Column details: name, type, max length, nullable, default, PK, FK
-- Show DDL inline with copy button
-- Export DDL as `.sql` file (system save dialog)
-- Bulk export: select multiple tables from the overview and export all at once
-
-### UI
-- Light / Dark mode toggle (top-right corner)
-- Monospace font throughout
-
----
+| Layer | Technology |
+|-------|------------|
+| Framework | Electron (latest stable) |
+| Frontend | React 19 + TypeScript (strict) |
+| Build | Vite via electron-vite |
+| Styling | Tailwind CSS |
+| Database | mssql (npm) — SQL Login only |
+| Font | Inter Variable (self-hosted) |
+| Updates | electron-updater + GitHub Releases |
 
 ## Setup
 
-1. Copy `appsettings.json` and fill in your connection details:
+1. Install dependencies:
+
+```bash
+nvm use 20
+pnpm install
+```
+
+2. Create `appsettings.json` in the project root:
 
 ```json
 {
@@ -52,111 +59,45 @@ A personal Electron desktop app for browsing MSSQL database structure and export
     "port": 1433,
     "database": "your-database",
     "user": "your-user",
-    "password": "your-password"
+    "password": "your-password",
+    "encrypt": false
   }
 }
 ```
 
-> `appsettings.json` is excluded from git.
+> Passwords are automatically encrypted on first launch. `appsettings.json` is excluded from git.
 
-2. Install dependencies:
-
-```bash
-nvm use 20
-pnpm install
-```
-
----
+3. (Optional) Add Slack webhook for error notifications — either in `appsettings.json` or via Settings > System tab in the app.
 
 ## Scripts
 
 | Command | Description |
-|---|---|
+|---------|-------------|
 | `pnpm dev` | Start development mode with hot reload |
 | `pnpm build` | Compile to `out/` |
 | `pnpm package` | Build + package app to `dist/` |
 | `pnpm typecheck` | Run TypeScript type check |
 
----
-
 ## Project Structure
 
 ```
 src/
-├── main/               # Electron main process
-│   └── ipc/            # IPC handlers (connection, schema, DDL)
-├── preload/            # contextBridge API exposure
-├── renderer/src/       # React app
+├── main/                  # Electron main process
+│   └── ipc/               # IPC handlers (connection, schema, updater, child-window)
+├── preload/               # contextBridge API exposure
+├── renderer/src/          # React app
 │   ├── components/
-│   │   ├── layout/     # Sidebar, MainContent
-│   │   ├── tree/       # Tree view nodes
-│   │   ├── table/      # TableOverview, SchemaDetail, TableData
-│   │   ├── export/     # DdlBlock
-│   │   └── ui/         # Button, Checkbox, ThemeToggle
-│   └── hooks/          # use-theme, use-database
-└── types/              # Shared TypeScript types
+│   │   ├── child/         # Child window components (sql-preview)
+│   │   ├── layout/        # Sidebar, MainContent
+│   │   ├── search/        # SearchBar, SearchRow, TagInput
+│   │   ├── table/         # TableOverview, SchemaDetail, TableData
+│   │   ├── tree/          # Tree view nodes
+│   │   ├── export/        # DdlBlock
+│   │   └── ui/            # Button, Checkbox, ThemeToggle, SettingsModal, UpdateBanner
+│   └── hooks/             # use-theme, use-database, use-loading
+└── types/                 # Shared TypeScript types
 ```
 
----
+## License
 
-## Changelog
-
-<!-- New versions go below the previous one -->
-
-### 1.0.13 — 2026-03-30
-- Fix: move Inter font `@import` from CSS to JS entry point to resolve CI build failure
-
-### 1.0.8 — 2026-03-30
-- Fix: `getAppVersion` crash in preload — `app` module is main-process only, now routed via IPC
-- Sidebar: version number separated from settings button with a divider line
-
-### 1.0.7 — 2026-03-30
-- Custom app icon (build/icon.png / .icns / .ico)
-- Inter Variable font applied globally
-- Encrypt toggle in Connection Settings (SSL support for Azure SQL)
-- Settings modal width increased for better layout
-
-### 1.0.6 — 2026-03-30
-- Slack error notifications for update errors, connection errors, and unhandled exceptions
-- Auto-update error surfaced in UI banner for debugging
-
-### 1.0.5 — 2026-03-30
-- Auto-update via electron-updater + GitHub Releases
-- Fix: handle missing `appsettings.json` on first launch (app no longer crashes)
-- Fix: publish config uses `releaseType: release` (removes draft mode)
-
-### 1.0.4 — 2026-03-30
-- Connection settings UI: gear icon in sidebar bottom-left
-- Password encrypted via Electron safeStorage (macOS Keychain / Windows DPAPI)
-- Password never transmitted to renderer process
-- Password field shows blank on open; placeholder indicates if password is already set
-- Eye icon toggle to show/hide password when re-entering
-- Close window now quits the app on all platforms (including macOS)
-- Prettier applied across all source files
-
-### 1.0.3 — 2026-03-29
-- Fix: DDL export now uses FK-aware topological sort — referenced tables are created before tables that depend on them
-
-### 1.0.2 — 2026-03-29
-- Data tab: row checkboxes to select specific rows for export
-- Top bar: "Export Data (N rows)" button appears when any rows are selected
-- Data export generates INSERT statements with FK-aware topological sort (referenced tables inserted first)
-- Selected rows persist when switching between tables or pages
-- Switching to a different database clears all row selections
-
-### 1.0.1 — 2026-03-29
-- Fix: DDL now includes schema prefix (`[schema].[table]`)
-- Fix: DDL now correctly handles `IDENTITY` columns
-- Fix: `getColumns` now filters by schema, preventing duplicate columns when same table name exists in multiple schemas
-- Fix: `getTables` row count now correctly scoped per schema
-- Fix: DDL foreign key `REFERENCES` now includes schema prefix
-- Sidebar tree now groups tables by schema: Server → Database → Schema → Tables
-- Table overview toolbar shows schema filter dropdown when multiple schemas exist
-
-### 1.0.0 — 2026-03-29
-- Initial release
-- MSSQL connection via appsettings.json (SQL Login)
-- Left sidebar tree: Server → Database → Tables
-- Data tab: pagination (100/500/1000), total count, column drag-reorder, column resize, double-click cell to copy
-- Schema tab: column details, DDL inline preview, single/bulk DDL export as .sql
-- Light / Dark mode toggle
+Private — personal use only.

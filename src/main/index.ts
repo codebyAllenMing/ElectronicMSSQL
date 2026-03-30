@@ -4,7 +4,8 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { registerConnectionHandlers, loadSettings } from './ipc/connection'
 import { registerSchemaHandlers } from './ipc/schema'
 import { registerUpdaterHandlers } from './ipc/updater'
-import { initSlack, notifyUnhandledError } from './slack'
+import { registerChildWindowHandlers } from './ipc/child-window'
+import { initSlack, encryptWebhookUrl, notifyUnhandledError } from './slack'
 
 function createWindow(): BrowserWindow {
     const mainWindow = new BrowserWindow({
@@ -45,7 +46,22 @@ app.whenReady().then(() => {
     electronApp.setAppUserModelId('com.electronicmssql')
 
     const settings = loadSettings()
-    initSlack(settings.slack?.webhookUrl ?? '')
+    const rawWebhook = settings.slack?.webhookUrl ?? ''
+    initSlack(rawWebhook)
+
+    // Auto-encrypt plain webhook URL on first run
+    if (rawWebhook && !rawWebhook.startsWith('enc:')) {
+        const encrypted = encryptWebhookUrl(rawWebhook)
+        if (encrypted !== rawWebhook) {
+            settings.slack = { webhookUrl: encrypted }
+            const { writeFileSync } = require('fs')
+            const { join } = require('path')
+            const settingsPath = app.isPackaged
+                ? join(app.getPath('userData'), 'appsettings.json')
+                : join(process.cwd(), 'appsettings.json')
+            writeFileSync(settingsPath, JSON.stringify(settings, null, 2), 'utf-8')
+        }
+    }
 
     app.on('browser-window-created', (_, window) => {
         if (is.dev) optimizer.watchWindowShortcuts(window)
@@ -57,6 +73,7 @@ app.whenReady().then(() => {
     registerSchemaHandlers()
 
     const mainWindow = createWindow()
+    registerChildWindowHandlers(mainWindow)
     registerUpdaterHandlers(mainWindow)
 
     app.on('activate', function () {
