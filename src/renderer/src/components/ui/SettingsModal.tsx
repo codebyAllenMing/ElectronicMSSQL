@@ -90,7 +90,7 @@ export default function SettingsModal({ onClose, onSaved }: Props): JSX.Element 
 
     return (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-            <div className="w-[420px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl">
+            <div className="w-[520px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-xl">
                 {/* Header */}
                 <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200 dark:border-gray-700">
                     <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
