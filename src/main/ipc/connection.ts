@@ -2,6 +2,7 @@ import { ipcMain, app, safeStorage } from 'electron'
 import { join } from 'path'
 import { readFileSync, writeFileSync } from 'fs'
 import sql from 'mssql'
+import { notifyConnectionError } from '../slack'
 
 type AppSettings = {
     connection: {
@@ -10,6 +11,9 @@ type AppSettings = {
         database: string
         user: string
         password: string // stored as "enc:<base64>" or plain (legacy)
+    }
+    slack?: {
+        webhookUrl: string
     }
 }
 
@@ -23,7 +27,7 @@ const defaultSettings: AppSettings = {
     connection: { server: '', port: 1433, database: '', user: '', password: '' }
 }
 
-function loadSettings(): AppSettings {
+export function loadSettings(): AppSettings {
     try {
         const raw = readFileSync(settingsPath(), 'utf-8')
         return JSON.parse(raw) as AppSettings
@@ -73,16 +77,23 @@ export function registerConnectionHandlers(): void {
         const config = buildConfig(settings)
         config.database = 'master'
 
-        const pool = await new sql.ConnectionPool(config).connect()
-        const result = await pool.request().query(`
-      SELECT name
-      FROM sys.databases
-      WHERE name NOT IN ('master', 'tempdb', 'model', 'msdb')
-      ORDER BY name
-    `)
-        await pool.close()
-
-        return result.recordset.map((row) => row.name as string)
+        try {
+            const pool = await new sql.ConnectionPool(config).connect()
+            const result = await pool.request().query(`
+        SELECT name
+        FROM sys.databases
+        WHERE name NOT IN ('master', 'tempdb', 'model', 'msdb')
+        ORDER BY name
+      `)
+            await pool.close()
+            return result.recordset.map((row) => row.name as string)
+        } catch (err) {
+            notifyConnectionError(
+                `${config.server}:${config.port}`,
+                err instanceof Error ? err.message : String(err)
+            )
+            throw err
+        }
     })
 
     ipcMain.handle('db:getConnectionInfo', () => {

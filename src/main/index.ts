@@ -1,9 +1,10 @@
 import { app, shell, BrowserWindow } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
-import { registerConnectionHandlers } from './ipc/connection'
+import { registerConnectionHandlers, loadSettings } from './ipc/connection'
 import { registerSchemaHandlers } from './ipc/schema'
 import { registerUpdaterHandlers } from './ipc/updater'
+import { initSlack, notifyUnhandledError } from './slack'
 
 function createWindow(): BrowserWindow {
     const mainWindow = new BrowserWindow({
@@ -37,8 +38,14 @@ function createWindow(): BrowserWindow {
     return mainWindow
 }
 
+process.on('uncaughtException', (err) => notifyUnhandledError(err))
+process.on('unhandledRejection', (reason) => notifyUnhandledError(reason))
+
 app.whenReady().then(() => {
     electronApp.setAppUserModelId('com.electronicmssql')
+
+    const settings = loadSettings()
+    initSlack(settings.slack?.webhookUrl ?? '')
 
     app.on('browser-window-created', (_, window) => {
         optimizer.watchWindowShortcuts(window)

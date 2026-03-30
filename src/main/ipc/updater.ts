@@ -1,6 +1,7 @@
 import { autoUpdater } from 'electron-updater'
 import { BrowserWindow, ipcMain } from 'electron'
 import { is } from '@electron-toolkit/utils'
+import { notifyUpdateError } from '../slack'
 
 export function registerUpdaterHandlers(mainWindow: BrowserWindow): void {
     if (is.dev) return
@@ -24,6 +25,7 @@ export function registerUpdaterHandlers(mainWindow: BrowserWindow): void {
 
     autoUpdater.on('error', (err) => {
         mainWindow.webContents.send('update:error', { message: err.message })
+        notifyUpdateError(err.message)
     })
 
     ipcMain.handle('update:install', () => {
