@@ -5,6 +5,7 @@ type UpdateState =
     | { status: 'available'; version: string }
     | { status: 'downloading'; percent: number }
     | { status: 'ready' }
+    | { status: 'error'; message: string }
 
 export default function UpdateBanner(): JSX.Element | null {
     const [update, setUpdate] = useState<UpdateState>({ status: 'idle' })
@@ -17,12 +18,13 @@ export default function UpdateBanner(): JSX.Element | null {
             setUpdate({ status: 'downloading', percent })
         )
         window.api.onUpdateDownloaded(() => setUpdate({ status: 'ready' }))
+        window.api.onUpdateError((message) => setUpdate({ status: 'error', message }))
     }, [])
 
     if (update.status === 'idle') return null
 
     return (
-        <div className="flex items-center gap-3 px-4 py-2 bg-blue-600 text-white text-xs shrink-0">
+        <div className={`flex items-center gap-3 px-4 py-2 text-white text-xs shrink-0 ${update.status === 'error' ? 'bg-red-600' : 'bg-blue-600'}`}>
             {update.status === 'available' && (
                 <span>New version {update.version} available — downloading...</span>
             )}
@@ -47,6 +49,9 @@ export default function UpdateBanner(): JSX.Element | null {
                         Restart & Install
                     </button>
                 </>
+            )}
+            {update.status === 'error' && (
+                <span>Update error: {update.message}</span>
             )}
         </div>
     )

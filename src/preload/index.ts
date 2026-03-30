@@ -53,5 +53,10 @@ contextBridge.exposeInMainWorld('api', {
     onUpdateDownloaded: (cb: () => void) => {
         ipcRenderer.on('update:downloaded', cb)
     },
+    onUpdateError: (cb: (message: string) => void) => {
+        ipcRenderer.on('update:error', (_: IpcRendererEvent, data: { message: string }) =>
+            cb(data.message)
+        )
+    },
     installUpdate: () => ipcRenderer.invoke('update:install')
 })
