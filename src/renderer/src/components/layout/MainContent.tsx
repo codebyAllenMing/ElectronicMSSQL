@@ -68,7 +68,7 @@ export default function MainContent({
                 onSelectionChange={(rows) =>
                     onSelectionChange(view.database, view.tableSchema, view.tableName, rows)
                 }
-                onBack={() => onViewChange({ type: 'empty' })}
+                onBack={() => onViewChange({ type: 'table-overview', database: view.database })}
             />
         </ErrorBoundary>
     )

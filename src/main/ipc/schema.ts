@@ -193,12 +193,51 @@ export function registerSchemaHandlers(): void {
         async (_, database: string, tables: { tableSchema: string; tableName: string }[]) => {
             const pool = await getPool(database)
 
+            // ── Resolve FK parent tables recursively ────────────────────────
+            const allTables = new Map(
+                tables.map((t) => [`${t.tableSchema}.${t.tableName}`, { ...t }])
+            )
+            const processed = new Set<string>()
+            const toProcess = [...allTables.keys()]
+
+            while (toProcess.length > 0) {
+                const key = toProcess.shift()!
+                if (processed.has(key)) continue
+                processed.add(key)
+
+                const table = allTables.get(key)!
+                const fkResult = await pool.request()
+                    .input('tableName', sql.NVarChar, table.tableName)
+                    .input('tableSchema', sql.NVarChar, table.tableSchema).query(`
+                    SELECT DISTINCT rku.TABLE_SCHEMA AS REFERENCED_SCHEMA, rku.TABLE_NAME AS REFERENCED_TABLE
+                    FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+                    JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+                        ON rc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+                    JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE rku
+                        ON rc.UNIQUE_CONSTRAINT_NAME = rku.CONSTRAINT_NAME
+                    WHERE ku.TABLE_NAME = @tableName AND ku.TABLE_SCHEMA = @tableSchema
+                        AND rku.TABLE_NAME <> @tableName
+                `)
+
+                for (const row of fkResult.recordset) {
+                    const parentKey = `${row.REFERENCED_SCHEMA}.${row.REFERENCED_TABLE}`
+                    if (!allTables.has(parentKey)) {
+                        allTables.set(parentKey, {
+                            tableSchema: row.REFERENCED_SCHEMA as string,
+                            tableName: row.REFERENCED_TABLE as string
+                        })
+                    }
+                    if (!processed.has(parentKey)) {
+                        toProcess.push(parentKey)
+                    }
+                }
+            }
+
             // ── Topological sort by FK dependency ───────────────────────────
-            const tableSet = new Set(tables.map((t) => `${t.tableSchema}.${t.tableName}`))
+            const tableSet = new Set(allTables.keys())
             const deps = new Map<string, Set<string>>()
 
-            for (const { tableSchema, tableName } of tables) {
-                const key = `${tableSchema}.${tableName}`
+            for (const [key, { tableSchema, tableName }] of allTables) {
                 deps.set(key, new Set())
 
                 const fkDepsResult = await pool
@@ -245,8 +284,7 @@ export function registerSchemaHandlers(): void {
                 }
             }
 
-            const tableMap = new Map(tables.map((t) => [`${t.tableSchema}.${t.tableName}`, t]))
-            const sortedTables = sortedKeys.map((k) => tableMap.get(k)!)
+            const sortedTables = sortedKeys.map((k) => allTables.get(k)!)
 
             // ── Generate DDL in sorted order ────────────────────────────────
             const ddlParts: string[] = []
@@ -433,37 +471,109 @@ export function registerSchemaHandlers(): void {
         ) => {
             if (tables.length === 0) return ''
 
-            // ── Build FK dependency graph (only between selected tables) ────
             const pool = await getPool(database)
-            const tableSet = new Set(tables.map((t) => `${t.tableSchema}.${t.tableName}`))
-            const deps = new Map<string, Set<string>>()
 
-            for (const { tableSchema, tableName } of tables) {
-                const key = `${tableSchema}.${tableName}`
-                deps.set(key, new Set())
+            // ── Resolve FK parent rows recursively ──────────────────────────
+            const allTables = new Map(
+                tables.map((t) => [`${t.tableSchema}.${t.tableName}`, { ...t }])
+            )
+            const processed = new Set<string>()
+            const toProcess = [...allTables.keys()]
 
-                const fkResult = await pool
-                    .request()
-                    .input('tableName', sql.NVarChar, tableName)
-                    .input('tableSchema', sql.NVarChar, tableSchema).query(`
-          SELECT DISTINCT rku.TABLE_SCHEMA AS REFERENCED_SCHEMA, rku.TABLE_NAME AS REFERENCED_TABLE
-          FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
-          JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
-            ON rc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
-          JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE rku
-            ON rc.UNIQUE_CONSTRAINT_NAME = rku.CONSTRAINT_NAME
-          WHERE ku.TABLE_NAME = @tableName AND ku.TABLE_SCHEMA = @tableSchema
-        `)
+            while (toProcess.length > 0) {
+                const key = toProcess.shift()!
+                if (processed.has(key)) continue
+                processed.add(key)
 
-                for (const row of fkResult.recordset) {
-                    const refKey = `${row.REFERENCED_SCHEMA}.${row.REFERENCED_TABLE}`
-                    if (tableSet.has(refKey)) deps.get(key)!.add(refKey)
+                const table = allTables.get(key)!
+                if (table.rows.length === 0) continue
+
+                // Find FK relationships for this table
+                const fkResult = await pool.request()
+                    .input('tableName', sql.NVarChar, table.tableName)
+                    .input('tableSchema', sql.NVarChar, table.tableSchema).query(`
+                    SELECT
+                        ku.COLUMN_NAME,
+                        rku.TABLE_SCHEMA AS REFERENCED_SCHEMA,
+                        rku.TABLE_NAME AS REFERENCED_TABLE,
+                        rku.COLUMN_NAME AS REFERENCED_COLUMN
+                    FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+                    JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+                        ON rc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+                    JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE rku
+                        ON rc.UNIQUE_CONSTRAINT_NAME = rku.CONSTRAINT_NAME
+                    WHERE ku.TABLE_NAME = @tableName AND ku.TABLE_SCHEMA = @tableSchema
+                `)
+
+                for (const fk of fkResult.recordset) {
+                    const parentKey = `${fk.REFERENCED_SCHEMA}.${fk.REFERENCED_TABLE}`
+                    const childCol = fk.COLUMN_NAME as string
+                    const parentCol = fk.REFERENCED_COLUMN as string
+
+                    // Collect FK values from child rows (skip nulls)
+                    const fkValues = [...new Set(
+                        table.rows
+                            .map((r) => r[childCol])
+                            .filter((v) => v !== null && v !== undefined)
+                            .map((v) => String(v))
+                    )]
+                    if (fkValues.length === 0) continue
+
+                    // Query parent rows
+                    const placeholders = fkValues.map((_, i) => `@fkVal${i}`).join(', ')
+                    const req = pool.request()
+                    fkValues.forEach((v, i) => req.input(`fkVal${i}`, sql.NVarChar, v))
+                    const parentResult = await req.query(
+                        `SELECT * FROM [${database}].[${fk.REFERENCED_SCHEMA}].[${fk.REFERENCED_TABLE}] WHERE [${parentCol}] IN (${placeholders})`
+                    )
+
+                    if (parentResult.recordset.length > 0) {
+                        if (allTables.has(parentKey)) {
+                            // Merge rows (deduplicate by PK value)
+                            const existing = allTables.get(parentKey)!
+                            const existingKeys = new Set(existing.rows.map((r) => String(r[parentCol])))
+                            const newRows = parentResult.recordset.filter(
+                                (r) => !existingKeys.has(String(r[parentCol]))
+                            )
+                            existing.rows = [...existing.rows, ...newRows]
+                        } else {
+                            allTables.set(parentKey, {
+                                tableSchema: fk.REFERENCED_SCHEMA as string,
+                                tableName: fk.REFERENCED_TABLE as string,
+                                rows: parentResult.recordset
+                            })
+                        }
+                        if (!processed.has(parentKey)) {
+                            toProcess.push(parentKey)
+                        }
+                    }
                 }
             }
 
-            await pool.close()
+            // ── Build FK dependency graph ────────────────────────────────────
+            const tableSet = new Set(allTables.keys())
+            const deps = new Map<string, Set<string>>()
 
-            // ── Topological sort (Kahn's algorithm) ─────────────────────────
+            for (const [key, table] of allTables) {
+                deps.set(key, new Set())
+                const fkResult = await pool.request()
+                    .input('tableName', sql.NVarChar, table.tableName)
+                    .input('tableSchema', sql.NVarChar, table.tableSchema).query(`
+                    SELECT DISTINCT rku.TABLE_SCHEMA AS REFERENCED_SCHEMA, rku.TABLE_NAME AS REFERENCED_TABLE
+                    FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+                    JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+                        ON rc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+                    JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE rku
+                        ON rc.UNIQUE_CONSTRAINT_NAME = rku.CONSTRAINT_NAME
+                    WHERE ku.TABLE_NAME = @tableName AND ku.TABLE_SCHEMA = @tableSchema
+                `)
+                for (const row of fkResult.recordset) {
+                    const refKey = `${row.REFERENCED_SCHEMA}.${row.REFERENCED_TABLE}`
+                    if (tableSet.has(refKey) && refKey !== key) deps.get(key)!.add(refKey)
+                }
+            }
+
+            // ── Topological sort ─────────────────────────────────────────────
             const inDegree = new Map<string, number>()
             const adjacency = new Map<string, string[]>()
 
@@ -488,19 +598,93 @@ export function registerSchemaHandlers(): void {
                 }
             }
 
+            // ── Gather column metadata ───────────────────────────────────────
+            const identityCols = new Map<string, Set<string>>()
+            const guidCols = new Map<string, Set<string>>()
+            const fkChildCols = new Map<string, Set<string>>()
+
+            for (const [key, table] of allTables) {
+                const identResult = await pool.request()
+                    .input('tableName', sql.NVarChar, table.tableName)
+                    .input('tableSchema', sql.NVarChar, table.tableSchema).query(`
+                    SELECT c.name AS COLUMN_NAME
+                    FROM sys.identity_columns ic
+                    JOIN sys.columns c ON ic.object_id = c.object_id AND ic.column_id = c.column_id
+                    JOIN sys.tables t ON c.object_id = t.object_id
+                    JOIN sys.schemas s ON t.schema_id = s.schema_id
+                    WHERE t.name = @tableName AND s.name = @tableSchema
+                `)
+                identityCols.set(key, new Set(identResult.recordset.map((r) => r.COLUMN_NAME as string)))
+
+                const guidResult = await pool.request()
+                    .input('tableName', sql.NVarChar, table.tableName)
+                    .input('tableSchema', sql.NVarChar, table.tableSchema).query(`
+                    SELECT COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.COLUMNS
+                    WHERE TABLE_NAME = @tableName AND TABLE_SCHEMA = @tableSchema
+                      AND DATA_TYPE = 'uniqueidentifier'
+                `)
+                guidCols.set(key, new Set(guidResult.recordset.map((r) => r.COLUMN_NAME as string)))
+
+                // FK columns in this table (child side — should keep original value)
+                const fkColResult = await pool.request()
+                    .input('tableName', sql.NVarChar, table.tableName)
+                    .input('tableSchema', sql.NVarChar, table.tableSchema).query(`
+                    SELECT ku.COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+                    JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+                        ON rc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+                    WHERE ku.TABLE_NAME = @tableName AND ku.TABLE_SCHEMA = @tableSchema
+                `)
+                fkChildCols.set(key, new Set(fkColResult.recordset.map((r) => r.COLUMN_NAME as string)))
+            }
+
+            // Build set of GUID columns referenced by other tables' FK
+            const referencedGuidCols = new Map<string, Set<string>>()
+            for (const [key, table] of allTables) {
+                const refResult = await pool.request()
+                    .input('tableName', sql.NVarChar, table.tableName)
+                    .input('tableSchema', sql.NVarChar, table.tableSchema).query(`
+                    SELECT DISTINCT rku.COLUMN_NAME
+                    FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+                    JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+                        ON rc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+                    JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE rku
+                        ON rc.UNIQUE_CONSTRAINT_NAME = rku.CONSTRAINT_NAME
+                    WHERE rku.TABLE_NAME = @tableName AND rku.TABLE_SCHEMA = @tableSchema
+                `)
+                if (refResult.recordset.length > 0) {
+                    referencedGuidCols.set(key, new Set(refResult.recordset.map((r) => r.COLUMN_NAME as string)))
+                }
+            }
+
+            await pool.close()
+
             // ── Generate INSERT statements ───────────────────────────────────
-            const tableMap = new Map(tables.map((t) => [`${t.tableSchema}.${t.tableName}`, t]))
             const sqlParts: string[] = []
 
             for (const key of sorted) {
-                const table = tableMap.get(key)!
+                const table = allTables.get(key)!
                 if (table.rows.length === 0) continue
 
-                const cols = Object.keys(table.rows[0])
+                const allCols = Object.keys(table.rows[0])
+                const identity = identityCols.get(key) ?? new Set()
+                const guids = guidCols.get(key) ?? new Set()
+                const referencedGuids = referencedGuidCols.get(key) ?? new Set()
+                const fkCols = fkChildCols.get(key) ?? new Set()
+
+                // Exclude IDENTITY columns
+                const cols = allCols.filter((c) => !identity.has(c))
+                if (cols.length === 0) continue
+
                 const colList = cols.map((c) => `[${c}]`).join(', ')
 
                 const valueRows = table.rows.map((row) => {
                     const vals = cols.map((col) => {
+                        // GUID column that is NOT referenced by FK AND NOT a FK column itself → NEWID()
+                        if (guids.has(col) && !referencedGuids.has(col) && !fkCols.has(col)) {
+                            return 'NEWID()'
+                        }
                         const val = row[col]
                         if (val === null || val === undefined) return 'NULL'
                         if (typeof val === 'boolean') return val ? '1' : '0'

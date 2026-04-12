@@ -61,10 +61,7 @@ export default function App(): JSX.Element {
     }
 
     const handleViewChange = (newView: AppView): void => {
-        // Clear selections when switching to a different database
-        if (newView.type !== 'empty' && currentDatabase && newView.database !== currentDatabase) {
-            setDataSelections(new Map())
-        }
+        setDataSelections(new Map())
         setView(newView)
     }
 

@@ -107,15 +107,20 @@ export default function TableOverview({ database, onSelectTable }: Props): JSX.E
         })
     }
 
+    const getSelectedDdl = async (): Promise<string> => {
+        const selectedTables = filteredTables.filter((t) => selected.has(tableKey(t)))
+        return window.api.generateDdl(
+            database,
+            selectedTables.map((t) => ({ tableSchema: t.tableSchema, tableName: t.tableName }))
+        )
+    }
+
     const handleExport = async (): Promise<void> => {
         if (selected.size === 0) return
         setExporting(true)
         try {
+            const ddl = await getSelectedDdl()
             const selectedTables = filteredTables.filter((t) => selected.has(tableKey(t)))
-            const ddl = await window.api.generateDdl(
-                database,
-                selectedTables.map((t) => ({ tableSchema: t.tableSchema, tableName: t.tableName }))
-            )
             const suggestedName =
                 selectedTables.length === 1
                     ? `${selectedTables[0].tableName}.sql`
@@ -124,6 +129,14 @@ export default function TableOverview({ database, onSelectTable }: Props): JSX.E
         } finally {
             setExporting(false)
         }
+    }
+
+    const handlePreview = async (): Promise<void> => {
+        if (selected.size === 0) return
+        const ddl = await getSelectedDdl()
+        await window.api.openChildWindow('sql-preview', ddl, {
+            title: `${database} — DDL Preview`
+        })
     }
 
     if (error) {
@@ -224,6 +237,12 @@ export default function TableOverview({ database, onSelectTable }: Props): JSX.E
                         disabled={selected.size === 0 || exporting}
                     >
                         {exporting ? 'Exporting...' : 'Export DDL'}
+                    </Button>
+                    <Button
+                        onClick={handlePreview}
+                        disabled={selected.size === 0}
+                    >
+                        Preview
                     </Button>
                 </div>
             </div>

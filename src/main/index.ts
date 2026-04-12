@@ -42,6 +42,20 @@ function createWindow(): BrowserWindow {
 process.on('uncaughtException', (err) => notifyUnhandledError(err))
 process.on('unhandledRejection', (reason) => notifyUnhandledError(reason))
 
+// Prevent multiple instances
+const gotTheLock = app.requestSingleInstanceLock()
+if (!gotTheLock) {
+    app.quit()
+} else {
+    app.on('second-instance', () => {
+        const win = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed())
+        if (win) {
+            if (win.isMinimized()) win.restore()
+            win.focus()
+        }
+    })
+}
+
 app.whenReady().then(() => {
     electronApp.setAppUserModelId('com.electronicmssql')
 
